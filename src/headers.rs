@@ -9,7 +9,7 @@ use result::Result;
 pub const FILE_HEADER_SIZE: u16 = 28;
 pub const CHUNK_HEADER_SIZE: u16 = 12;
 
-const FILE_MAGIC: u32 = 0xed26ff3a;
+const FILE_MAGIC: u32 = 0xed26_ff3a;
 const FILE_FORMAT_VERSION: (u16, u16) = (1, 0);
 
 const CHUNK_MAGIC_RAW: u16 = 0xcac1;
@@ -43,7 +43,8 @@ impl FileHeader {
 
         let version = (r.read_u16::<LittleEndian>()?, r.read_u16::<LittleEndian>()?);
         if version != FILE_FORMAT_VERSION {
-            return Err(format!("Invalid file format version: {:?}", version).into());
+            let (major, minor) = version;
+            return Err(format!("Invalid file format version: {}.{}", major, minor).into());
         }
 
         let file_header_size = r.read_u16::<LittleEndian>()?;
@@ -121,7 +122,7 @@ pub enum ChunkType {
 }
 
 impl From<ChunkType> for u16 {
-    fn from(original: ChunkType) -> u16 {
+    fn from(original: ChunkType) -> Self {
         match original {
             ChunkType::Raw => CHUNK_MAGIC_RAW,
             ChunkType::Fill => CHUNK_MAGIC_FILL,

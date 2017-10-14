@@ -32,7 +32,7 @@ impl<R: Read> Reader<R> {
 
     fn read_chunk(&mut self, sparse_file: &mut File) -> Result<()> {
         let header = ChunkHeader::deserialize(&mut self.r)?;
-        let block_size = self.block_size.unwrap();
+        let block_size = self.block_size.expect("block_size not set");
         let size = header.chunk_size * block_size;
 
         let chunk = match header.chunk_type {

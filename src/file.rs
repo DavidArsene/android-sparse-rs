@@ -58,7 +58,7 @@ impl File {
 
     fn image_checksum(&self) -> u32 {
         // TODO
-        return 0;
+        0
     }
 }
 
@@ -74,18 +74,16 @@ impl Chunk {
     pub fn size(&self) -> u32 {
         let body_size = match *self {
             Chunk::Raw { ref buf } => buf.len() as u32,
-            Chunk::Fill { .. } => 4,
+            Chunk::Fill { .. } | Chunk::Crc32 { .. } => 4,
             Chunk::DontCare { .. } => 0,
-            Chunk::Crc32 { .. } => 4,
         };
-        CHUNK_HEADER_SIZE as u32 + body_size
+        u32::from(CHUNK_HEADER_SIZE) + body_size
     }
 
     pub fn raw_size(&self) -> u32 {
         match *self {
             Chunk::Raw { ref buf } => buf.len() as u32,
-            Chunk::Fill { size, .. } => size,
-            Chunk::DontCare { size } => size,
+            Chunk::Fill { size, .. } | Chunk::DontCare { size } => size,
             Chunk::Crc32 { .. } => 0,
         }
     }

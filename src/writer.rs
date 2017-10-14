@@ -18,7 +18,7 @@ impl<W: Write> Writer<W> {
         header.serialize(&mut self.w)?;
 
         for chunk in sparse_file.chunk_iter() {
-            self.write_chunk(&chunk, &sparse_file)?;
+            self.write_chunk(chunk, sparse_file)?;
         }
 
         Ok(())
@@ -34,7 +34,7 @@ impl<W: Write> Writer<W> {
             Chunk::DontCare { .. } => &[],
             Chunk::Crc32 { ref crc } => crc,
         };
-        self.w.write(body)?;
+        self.w.write_all(body)?;
 
         Ok(())
     }
