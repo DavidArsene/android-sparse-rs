@@ -1,0 +1,7 @@
+[package]
+name = "android-sparse"
+version = "0.1.0"
+authors = ["Jan Teske <jan.teske@gmail.com>"]
+
+[dependencies]
+byteorder = "1"
