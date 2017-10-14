@@ -6,8 +6,8 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use result::Result;
 
-pub const FILE_HEADER_SIZE: usize = 28;
-pub const CHUNK_HEADER_SIZE: usize = 12;
+pub const FILE_HEADER_SIZE: u16 = 28;
+pub const CHUNK_HEADER_SIZE: u16 = 12;
 
 const FILE_MAGIC: u32 = 0xed26ff3a;
 const FILE_FORMAT_VERSION: (u16, u16) = (1, 0);
@@ -47,11 +47,11 @@ impl FileHeader {
         }
 
         let file_header_size = r.read_u16::<LittleEndian>()?;
-        if file_header_size != FILE_HEADER_SIZE as u16 {
+        if file_header_size != FILE_HEADER_SIZE {
             return Err(format!("Invalid file header size: {}", file_header_size).into());
         }
         let chunk_header_size = r.read_u16::<LittleEndian>()?;
-        if chunk_header_size != CHUNK_HEADER_SIZE as u16 {
+        if chunk_header_size != CHUNK_HEADER_SIZE {
             return Err(format!("Invalid chunk header size: {}", chunk_header_size).into());
         }
 
@@ -70,8 +70,8 @@ impl FileHeader {
         w.write_u16::<LittleEndian>(maj_version)?;
         w.write_u16::<LittleEndian>(min_version)?;
 
-        w.write_u16::<LittleEndian>(FILE_HEADER_SIZE as u16)?;
-        w.write_u16::<LittleEndian>(CHUNK_HEADER_SIZE as u16)?;
+        w.write_u16::<LittleEndian>(FILE_HEADER_SIZE)?;
+        w.write_u16::<LittleEndian>(CHUNK_HEADER_SIZE)?;
 
         w.write_u32::<LittleEndian>(self.block_size)?;
         w.write_u32::<LittleEndian>(self.total_blocks)?;
