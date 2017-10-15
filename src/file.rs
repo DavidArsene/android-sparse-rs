@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::slice::Iter;
 
 use headers::{ChunkHeader, ChunkType, FileHeader};
@@ -21,10 +22,15 @@ impl File {
     }
 
     pub fn header(&self) -> FileHeader {
+        let total_chunks = self.chunks
+            .len()
+            .try_into()
+            .expect("number of chunks doesn't fit into u32");
+
         FileHeader {
             block_size: self.block_size,
             total_blocks: self.total_blocks(),
-            total_chunks: self.chunks.len() as u32,
+            total_chunks: total_chunks,
             image_checksum: self.image_checksum(),
         }
     }
@@ -73,7 +79,9 @@ pub enum Chunk {
 impl Chunk {
     pub fn size(&self) -> u32 {
         let body_size = match *self {
-            Chunk::Raw { ref buf } => buf.len() as u32,
+            Chunk::Raw { ref buf } => buf.len()
+                .try_into()
+                .expect("chunk size doesn't fit into u32"),
             Chunk::Fill { .. } | Chunk::Crc32 { .. } => 4,
             Chunk::DontCare { .. } => 0,
         };
@@ -82,7 +90,9 @@ impl Chunk {
 
     pub fn raw_size(&self) -> u32 {
         match *self {
-            Chunk::Raw { ref buf } => buf.len() as u32,
+            Chunk::Raw { ref buf } => buf.len()
+                .try_into()
+                .expect("raw chunk size doesn't fit into u32"),
             Chunk::Fill { size, .. } | Chunk::DontCare { size } => size,
             Chunk::Crc32 { .. } => 0,
         }
