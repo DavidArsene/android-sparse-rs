@@ -43,12 +43,56 @@ impl File {
         }
     }
 
-    pub fn add_chunk(&mut self, chunk: Chunk) -> Result<()> {
-        if chunk.raw_size() % self.block_size != 0 {
-            return Err("Chunk size must be multiple of block_size".into());
+    pub fn add_raw(&mut self, buf: &[u8]) -> Result<()> {
+        if buf.len() % self.block_size as usize != 0 {
+            return Err("bytes size must be multiple of block_size".into());
         }
 
-        self.chunks.push(chunk);
+        let new_buf = buf;
+        if let Some(&mut Chunk::Raw { ref mut buf }) = self.chunks.iter_mut().last() {
+            buf.extend(new_buf.iter().cloned());
+            return Ok(());
+        }
+
+        let buf = new_buf.to_vec();
+        self.chunks.push(Chunk::Raw { buf });
+        Ok(())
+    }
+
+    pub fn add_fill(&mut self, fill: [u8; 4], size: u32) -> Result<()> {
+        if size % self.block_size != 0 {
+            return Err("size must be multiple of block_size".into());
+        }
+
+        let (new_fill, new_size) = (fill, size);
+        if let Some(&mut Chunk::Fill { fill, ref mut size }) = self.chunks.iter_mut().last() {
+            if fill == new_fill {
+                *size += new_size;
+                return Ok(());
+            }
+        }
+
+        self.chunks.push(Chunk::Fill { fill, size });
+        Ok(())
+    }
+
+    pub fn add_dont_care(&mut self, size: u32) -> Result<()> {
+        if size % self.block_size != 0 {
+            return Err("size must be multiple of block_size".into());
+        }
+
+        let new_size = size;
+        if let Some(&mut Chunk::DontCare { ref mut size }) = self.chunks.iter_mut().last() {
+            *size += new_size;
+            return Ok(());
+        }
+
+        self.chunks.push(Chunk::DontCare { size });
+        Ok(())
+    }
+
+    pub fn add_crc32(&mut self, crc: u32) -> Result<()> {
+        self.chunks.push(Chunk::Crc32 { crc });
         Ok(())
     }
 
@@ -73,7 +117,7 @@ pub enum Chunk {
     Raw { buf: Vec<u8> },
     Fill { fill: [u8; 4], size: u32 },
     DontCare { size: u32 },
-    Crc32 { crc: [u8; 4] },
+    Crc32 { crc: u32 },
 }
 
 impl Chunk {

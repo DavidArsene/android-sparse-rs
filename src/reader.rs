@@ -1,6 +1,8 @@
 use std::io::Read;
 
-use file::{Chunk, File};
+use byteorder::{LittleEndian, ReadBytesExt};
+
+use file::File;
 use headers::{ChunkHeader, ChunkType, FileHeader};
 use result::Result;
 
@@ -35,26 +37,24 @@ impl<R: Read> Reader<R> {
         let block_size = self.block_size.expect("block_size not set");
         let size = header.chunk_size * block_size;
 
-        let chunk = match header.chunk_type {
+        match header.chunk_type {
             ChunkType::Raw => {
                 let mut buf = vec![0; size as usize];
                 self.r.read_exact(&mut buf)?;
-                Chunk::Raw { buf }
+                sparse_file.add_raw(&buf)?;
             }
             ChunkType::Fill => {
                 let mut fill = [0; 4];
                 self.r.read_exact(&mut fill)?;
-                Chunk::Fill { fill, size }
+                sparse_file.add_fill(fill, size)?;
             }
-            ChunkType::DontCare => Chunk::DontCare { size },
+            ChunkType::DontCare => sparse_file.add_dont_care(size)?,
             ChunkType::Crc32 => {
-                let mut crc = [0; 4];
-                self.r.read_exact(&mut crc)?;
-                Chunk::Crc32 { crc }
+                let crc = self.r.read_u32::<LittleEndian>()?;
+                sparse_file.add_crc32(crc)?;
             }
-        };
+        }
 
-        sparse_file.add_chunk(chunk)?;
         Ok(())
     }
 }

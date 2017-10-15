@@ -1,5 +1,7 @@
 use std::io::Write;
 
+use byteorder::{LittleEndian, WriteBytesExt};
+
 use file::{Chunk, File};
 use result::Result;
 
@@ -28,13 +30,12 @@ impl<W: Write> Writer<W> {
         let header = sparse_file.chunk_header(chunk);
         header.serialize(&mut self.w)?;
 
-        let body = match *chunk {
-            Chunk::Raw { ref buf } => &buf[..],
-            Chunk::Fill { ref fill, .. } => fill,
-            Chunk::DontCare { .. } => &[],
-            Chunk::Crc32 { ref crc } => crc,
-        };
-        self.w.write_all(body)?;
+        match *chunk {
+            Chunk::Raw { ref buf } => self.w.write_all(buf)?,
+            Chunk::Fill { ref fill, .. } => self.w.write_all(fill)?,
+            Chunk::DontCare { .. } => {}
+            Chunk::Crc32 { crc } => self.w.write_u32::<LittleEndian>(crc)?,
+        }
 
         Ok(())
     }
