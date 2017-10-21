@@ -1,4 +1,5 @@
 use std::io::{ErrorKind, Read};
+use std::io::Result as IoResult;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
@@ -6,22 +7,35 @@ use file::File;
 use headers::{ChunkHeader, ChunkType, FileHeader};
 use result::Result;
 
+#[derive(Debug)]
+enum Source<R> {
+    Reader(R),
+}
+
+impl<R: Read> Read for Source<R> {
+    fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
+        match *self {
+            Source::Reader(ref mut r) => r.read(buf),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Reader<R> {
-    r: R,
+    source: Source<R>,
     block_size: Option<u32>,
 }
 
 impl<R: Read> Reader<R> {
     pub fn new(r: R) -> Self {
         Self {
-            r: r,
+            source: Source::Reader(r),
             block_size: None,
         }
     }
 
     pub fn read(mut self) -> Result<File> {
-        let header = FileHeader::deserialize(&mut self.r)?;
+        let header = FileHeader::deserialize(&mut self.source)?;
         self.block_size = Some(header.block_size);
         let mut sparse_file = File::new(header.block_size);
 
@@ -33,24 +47,24 @@ impl<R: Read> Reader<R> {
     }
 
     fn read_chunk(&mut self, sparse_file: &mut File) -> Result<()> {
-        let header = ChunkHeader::deserialize(&mut self.r)?;
+        let header = ChunkHeader::deserialize(&mut self.source)?;
         let block_size = self.block_size.expect("block_size not set");
         let size = header.chunk_size * block_size;
 
         match header.chunk_type {
             ChunkType::Raw => {
                 let mut buf = vec![0; size as usize];
-                self.r.read_exact(&mut buf)?;
+                self.source.read_exact(&mut buf)?;
                 sparse_file.add_raw(&buf)?;
             }
             ChunkType::Fill => {
                 let mut fill = [0; 4];
-                self.r.read_exact(&mut fill)?;
+                self.source.read_exact(&mut fill)?;
                 sparse_file.add_fill(fill, size)?;
             }
             ChunkType::DontCare => sparse_file.add_dont_care(size)?,
             ChunkType::Crc32 => {
-                let crc = self.r.read_u32::<LittleEndian>()?;
+                let crc = self.source.read_u32::<LittleEndian>()?;
                 sparse_file.add_crc32(crc)?;
             }
         }
@@ -61,13 +75,16 @@ impl<R: Read> Reader<R> {
 
 #[derive(Clone, Debug)]
 pub struct Encoder<R> {
-    r: R,
+    source: Source<R>,
     block_size: u32,
 }
 
 impl<R: Read> Encoder<R> {
     pub fn new(r: R, block_size: u32) -> Self {
-        Self { r, block_size }
+        Self {
+            source: Source::Reader(r),
+            block_size: block_size,
+        }
     }
 
     pub fn read(mut self) -> Result<File> {
@@ -76,7 +93,7 @@ impl<R: Read> Encoder<R> {
 
         let mut block = vec![0; block_size];
         loop {
-            let bytes_read = read_all(&mut self.r, &mut block)?;
+            let bytes_read = read_all(&mut self.source, &mut block)?;
             self.read_block(&block[..bytes_read], &mut sparse_file)?;
             if bytes_read != block_size {
                 break;
