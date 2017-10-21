@@ -20,7 +20,7 @@ impl<R: Read> Read for Source<R> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Reader<R> {
     source: Source<R>,
     block_size: Option<u32>,
@@ -73,7 +73,7 @@ impl<R: Read> Reader<R> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Encoder<R> {
     source: Source<R>,
     block_size: u32,

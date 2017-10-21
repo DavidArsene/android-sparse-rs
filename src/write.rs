@@ -5,7 +5,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use file::{Chunk, File};
 use result::Result;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Writer<W> {
     w: W,
 }
@@ -41,7 +41,7 @@ impl<W: Write> Writer<W> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Decoder<W> {
     w: W,
 }
