@@ -32,7 +32,7 @@ fn simg2img(args: &Args) -> Result<()> {
     let reader = BufReader::new(fi);
     let writer = BufWriter::new(fo);
 
-    let sparse_file = sparse::Reader::new(reader).read()?;
+    let sparse_file = sparse::Reader::from_reader(reader).read()?;
     sparse::Decoder::new(writer).write(&sparse_file)?;
 
     Ok(())

@@ -1,3 +1,4 @@
+use std::fs::File as StdFile;
 use std::io::{ErrorKind, Read};
 use std::io::Result as IoResult;
 
@@ -10,12 +11,14 @@ use result::Result;
 #[derive(Debug)]
 enum Source<R> {
     Reader(R),
+    File(StdFile),
 }
 
 impl<R: Read> Read for Source<R> {
     fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
         match *self {
             Source::Reader(ref mut r) => r.read(buf),
+            Source::File(ref mut f) => f.read(buf),
         }
     }
 }
@@ -27,9 +30,16 @@ pub struct Reader<R> {
 }
 
 impl<R: Read> Reader<R> {
-    pub fn new(r: R) -> Self {
+    pub fn from_reader(r: R) -> Self {
         Self {
             source: Source::Reader(r),
+            block_size: None,
+        }
+    }
+
+    pub fn from_file(file: StdFile) -> Self {
+        Self {
+            source: Source::File(file),
             block_size: None,
         }
     }
@@ -80,9 +90,16 @@ pub struct Encoder<R> {
 }
 
 impl<R: Read> Encoder<R> {
-    pub fn new(r: R, block_size: u32) -> Self {
+    pub fn from_reader(r: R, block_size: u32) -> Self {
         Self {
             source: Source::Reader(r),
+            block_size: block_size,
+        }
+    }
+
+    pub fn from_file(file: StdFile, block_size: u32) -> Self {
+        Self {
+            source: Source::File(file),
             block_size: block_size,
         }
     }
