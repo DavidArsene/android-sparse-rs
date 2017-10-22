@@ -11,6 +11,7 @@ pub type ChunkIter<'a> = Iter<'a, Chunk>;
 #[derive(Debug)]
 pub struct File {
     block_size: u32,
+    backing_file: Option<StdFile>,
     chunks: Vec<Chunk>,
 }
 
@@ -18,6 +19,15 @@ impl File {
     pub fn new(block_size: u32) -> Self {
         Self {
             block_size: block_size,
+            backing_file: None,
+            chunks: Vec::new(),
+        }
+    }
+
+    pub fn with_backing_file(file: StdFile, block_size: u32) -> Self {
+        Self {
+            block_size: block_size,
+            backing_file: Some(file),
             chunks: Vec::new(),
         }
     }
@@ -57,6 +67,36 @@ impl File {
 
         let buf = new_buf.to_vec();
         self.chunks.push(Chunk::Raw { buf });
+        Ok(())
+    }
+
+    pub fn add_raw_file_backed(&mut self, offset: u64, size: u32) -> Result<()> {
+        let backing_file = match self.backing_file {
+            Some(ref f) => f,
+            None => return Err("Sparse File not created with backing file".into()),
+        };
+        if size % self.block_size != 0 {
+            return Err("size must be multiple of block_size".into());
+        }
+
+        let (new_offset, new_size) = (offset, size);
+        if let Some(&mut Chunk::RawFileBacked {
+            offset,
+            ref mut size,
+            ..
+        }) = self.chunks.iter_mut().last()
+        {
+            if new_offset == offset + *size as u64 {
+                *size += new_size;
+                return Ok(());
+            }
+        }
+
+        self.chunks.push(Chunk::RawFileBacked {
+            file: backing_file.try_clone()?,
+            offset: offset,
+            size: size,
+        });
         Ok(())
     }
 
