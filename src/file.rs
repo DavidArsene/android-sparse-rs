@@ -1,4 +1,5 @@
 use std::convert::TryInto;
+use std::fs::File as StdFile;
 use std::slice::Iter;
 
 use headers::{ChunkHeader, ChunkType, FileHeader};
@@ -7,7 +8,7 @@ use result::Result;
 
 pub type ChunkIter<'a> = Iter<'a, Chunk>;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct File {
     block_size: u32,
     chunks: Vec<Chunk>,
@@ -112,9 +113,14 @@ impl File {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Chunk {
     Raw { buf: Vec<u8> },
+    RawFileBacked {
+        file: StdFile,
+        offset: u64,
+        size: u32,
+    },
     Fill { fill: [u8; 4], size: u32 },
     DontCare { size: u32 },
     Crc32 { crc: u32 },
@@ -126,6 +132,7 @@ impl Chunk {
             Chunk::Raw { ref buf } => buf.len()
                 .try_into()
                 .expect("chunk size doesn't fit into u32"),
+            Chunk::RawFileBacked { size, .. } => size,
             Chunk::Fill { .. } | Chunk::Crc32 { .. } => 4,
             Chunk::DontCare { .. } => 0,
         };
@@ -137,14 +144,16 @@ impl Chunk {
             Chunk::Raw { ref buf } => buf.len()
                 .try_into()
                 .expect("raw chunk size doesn't fit into u32"),
-            Chunk::Fill { size, .. } | Chunk::DontCare { size } => size,
+            Chunk::RawFileBacked { size, .. } |
+            Chunk::Fill { size, .. } |
+            Chunk::DontCare { size } => size,
             Chunk::Crc32 { .. } => 0,
         }
     }
 
     pub fn chunk_type(&self) -> ChunkType {
         match *self {
-            Chunk::Raw { .. } => ChunkType::Raw,
+            Chunk::Raw { .. } | Chunk::RawFileBacked { .. } => ChunkType::Raw,
             Chunk::Fill { .. } => ChunkType::Fill,
             Chunk::DontCare { .. } => ChunkType::DontCare,
             Chunk::Crc32 { .. } => ChunkType::Crc32,
