@@ -1,5 +1,5 @@
 use std::fs::File as StdFile;
-use std::io::{ErrorKind, Read};
+use std::io::{ErrorKind, Read, Seek, SeekFrom};
 use std::io::Result as IoResult;
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -47,7 +47,11 @@ impl<R: Read> Reader<R> {
     pub fn read(mut self) -> Result<File> {
         let header = FileHeader::deserialize(&mut self.source)?;
         self.block_size = Some(header.block_size);
-        let mut sparse_file = File::new(header.block_size);
+
+        let mut sparse_file = match self.source {
+            Source::Reader(_) => File::new(header.block_size),
+            Source::File(ref f) => File::with_backing_file(f.try_clone()?, header.block_size),
+        };
 
         for _ in 0..header.total_chunks {
             self.read_chunk(&mut sparse_file)?;
@@ -105,9 +109,12 @@ impl<R: Read> Encoder<R> {
     }
 
     pub fn read(mut self) -> Result<File> {
-        let mut sparse_file = File::new(self.block_size);
-        let block_size = self.block_size as usize;
+        let mut sparse_file = match self.source {
+            Source::Reader(_) => File::new(self.block_size),
+            Source::File(ref f) => File::with_backing_file(f.try_clone()?, self.block_size),
+        };
 
+        let block_size = self.block_size as usize;
         let mut block = vec![0; block_size];
         loop {
             let bytes_read = read_all(&mut self.source, &mut block)?;
@@ -133,8 +140,17 @@ impl<R: Read> Encoder<R> {
             } else {
                 sparse_file.add_fill(fill, self.block_size)?;
             }
-        } else {
-            sparse_file.add_raw(block)?;
+            return Ok(());
+        }
+
+        match self.source {
+            Source::Reader(_) => sparse_file.add_raw(block)?,
+            Source::File(ref f) => {
+                let mut file = f.try_clone()?;
+                let curr_offset = file.seek(SeekFrom::Current(0))?;
+                let offset = curr_offset - self.block_size as u64;
+                sparse_file.add_raw_file_backed(offset, self.block_size)?;
+            }
         }
 
         Ok(())
