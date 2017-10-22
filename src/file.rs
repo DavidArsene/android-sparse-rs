@@ -1,7 +1,7 @@
-use std::convert::TryInto;
 use std::fs::File as StdFile;
 use std::slice::Iter;
 
+use convert::TryInto;
 use headers::{ChunkHeader, ChunkType, FileHeader};
 use headers::CHUNK_HEADER_SIZE;
 use result::Result;

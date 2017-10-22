@@ -1,10 +1,9 @@
-#![feature(try_from)]
-
 extern crate byteorder;
 
 pub mod file;
 pub mod result;
 
+mod convert;
 mod headers;
 mod read;
 mod write;

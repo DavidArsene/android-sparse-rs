@@ -1,9 +1,9 @@
-use std::convert::{TryFrom, TryInto};
 use std::error::Error;
 use std::io::{Read, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
+use convert::{TryFrom, TryInto};
 use result::Result;
 
 pub const FILE_HEADER_SIZE: u16 = 28;
