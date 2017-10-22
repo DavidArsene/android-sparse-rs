@@ -10,3 +10,6 @@ license = "MIT/Apache-2.0"
 
 [dependencies]
 byteorder = "1"
+
+[badges]
+gitlab = { repository = "haellowyyn/android-sparse-rs" }
