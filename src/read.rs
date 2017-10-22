@@ -36,14 +36,18 @@ impl<R: Read> Reader<R> {
             block_size: None,
         }
     }
+}
 
+impl Reader<StdFile> {
     pub fn from_file(file: StdFile) -> Self {
         Self {
             source: Source::File(file),
             block_size: None,
         }
     }
+}
 
+impl<R: Read> Reader<R> {
     pub fn read(mut self) -> Result<File> {
         let header = FileHeader::deserialize(&mut self.source)?;
         self.block_size = Some(header.block_size);
@@ -100,14 +104,18 @@ impl<R: Read> Encoder<R> {
             block_size: block_size,
         }
     }
+}
 
+impl Encoder<StdFile> {
     pub fn from_file(file: StdFile, block_size: u32) -> Self {
         Self {
             source: Source::File(file),
             block_size: block_size,
         }
     }
+}
 
+impl<R: Read> Encoder<R> {
     pub fn read(mut self) -> Result<File> {
         let mut sparse_file = match self.source {
             Source::Reader(_) => File::new(self.block_size),
