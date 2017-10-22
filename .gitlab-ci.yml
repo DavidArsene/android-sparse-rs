@@ -1,0 +1,6 @@
+image: "rust:latest"
+
+test:cargo:
+  script:
+  - rustc --version && cargo --version       # print version info for debugging
+  - cargo test --verbose --jobs 1 --release  # don't paralize to make errors more readable
