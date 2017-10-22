@@ -2,7 +2,7 @@ extern crate android_sparse as sparse;
 
 use std::env;
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
+use std::io::BufWriter;
 
 use sparse::result::Result;
 
@@ -31,10 +31,9 @@ fn img2simg(args: &Args) -> Result<()> {
     let fi = File::open(&args.src)?;
     let fo = File::create(&args.dst)?;
 
-    let reader = BufReader::new(fi);
     let writer = BufWriter::new(fo);
 
-    let sparse_file = sparse::Encoder::from_reader(reader, BLOCK_SIZE).read()?;
+    let sparse_file = sparse::Encoder::from_file(fi, BLOCK_SIZE).read()?;
     sparse::Writer::new(writer).write(&sparse_file)?;
 
     Ok(())
