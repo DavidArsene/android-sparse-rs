@@ -156,7 +156,7 @@ impl<R: Read> Encoder<R> {
             Source::File(ref f) => {
                 let mut file = f.try_clone()?;
                 let curr_offset = file.seek(SeekFrom::Current(0))?;
-                let offset = curr_offset - self.block_size as u64;
+                let offset = curr_offset - u64::from(self.block_size);
                 sparse_file.add_raw_file_backed(offset, self.block_size)?;
             }
         }

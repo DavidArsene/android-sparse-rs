@@ -86,7 +86,7 @@ impl File {
             ..
         }) = self.chunks.iter_mut().last()
         {
-            if new_offset == offset + *size as u64 {
+            if new_offset == offset + u64::from(*size) {
                 *size += new_size;
                 return Ok(());
             }
