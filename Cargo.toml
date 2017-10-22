@@ -2,6 +2,11 @@
 name = "android-sparse"
 version = "0.1.0"
 authors = ["Jan Teske <jan.teske@gmail.com>"]
+description = "An implementation of Android's sparse file format."
+repository = "https://gitlab.com/haellowyyn/android-sparse-rs"
+keywords = ["android", "sparse"]
+categories = ["command-line-utilities", "compression", "parsing"]
+license = "MIT/Apache-2.0"
 
 [dependencies]
 byteorder = "1"
