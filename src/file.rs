@@ -2,7 +2,7 @@ use std::fs::File as StdFile;
 use std::slice::Iter;
 
 use convert::TryInto;
-use headers::{ChunkHeader, ChunkType, FileHeader};
+use headers::ChunkType;
 use headers::CHUNK_HEADER_SIZE;
 use result::Result;
 
@@ -32,26 +32,26 @@ impl File {
         }
     }
 
-    pub fn header(&self) -> FileHeader {
-        let total_chunks = self.chunks
-            .len()
-            .try_into()
-            .expect("number of chunks doesn't fit into u32");
-
-        FileHeader {
-            block_size: self.block_size,
-            total_blocks: self.total_blocks(),
-            total_chunks: total_chunks,
-            image_checksum: self.image_checksum(),
-        }
+    pub fn block_size(&self) -> u32 {
+        self.block_size
     }
 
-    pub fn chunk_header(&self, chunk: &Chunk) -> ChunkHeader {
-        ChunkHeader {
-            chunk_type: chunk.chunk_type(),
-            chunk_size: chunk.raw_size() / self.block_size,
-            total_size: chunk.size(),
-        }
+    pub fn checksum(&self) -> u32 {
+        // TODO
+        0
+    }
+
+    pub fn num_blocks(&self) -> u32 {
+        self.chunks
+            .iter()
+            .fold(0, |sum, chunk| sum + chunk.raw_size() / self.block_size)
+    }
+
+    pub fn num_chunks(&self) -> u32 {
+        self.chunks
+            .len()
+            .try_into()
+            .expect("number of chunks doesn't fit into u32")
     }
 
     pub fn add_raw(&mut self, buf: &[u8]) -> Result<()> {
@@ -139,17 +139,6 @@ impl File {
 
     pub fn chunk_iter(&self) -> ChunkIter {
         self.chunks.iter()
-    }
-
-    fn total_blocks(&self) -> u32 {
-        self.chunks
-            .iter()
-            .fold(0, |sum, chunk| sum + chunk.raw_size() / self.block_size)
-    }
-
-    fn image_checksum(&self) -> u32 {
-        // TODO
-        0
     }
 }
 

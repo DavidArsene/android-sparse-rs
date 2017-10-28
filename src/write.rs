@@ -5,6 +5,7 @@ use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use byteorder::{LittleEndian, WriteBytesExt};
 
 use file::{Chunk, File};
+use headers::{ChunkHeader, FileHeader};
 use result::Result;
 
 const COPY_BUF_SIZE: usize = 4096;
@@ -20,8 +21,7 @@ impl<W: Write> Writer<W> {
     }
 
     pub fn write(mut self, sparse_file: &File) -> Result<()> {
-        let header = sparse_file.header();
-        header.serialize(&mut self.w)?;
+        self.write_file_header(sparse_file)?;
 
         for chunk in sparse_file.chunk_iter() {
             self.write_chunk(chunk, sparse_file)?;
@@ -30,9 +30,27 @@ impl<W: Write> Writer<W> {
         Ok(())
     }
 
+    fn write_file_header(&mut self, sparse_file: &File) -> Result<()> {
+        let header = FileHeader {
+            block_size: sparse_file.block_size(),
+            total_blocks: sparse_file.num_blocks(),
+            total_chunks: sparse_file.num_chunks(),
+            image_checksum: sparse_file.checksum(),
+        };
+        header.serialize(&mut self.w)
+    }
+
+    fn write_chunk_header(&mut self, chunk: &Chunk, block_size: u32) -> Result<()> {
+        let header = ChunkHeader {
+            chunk_type: chunk.chunk_type(),
+            chunk_size: chunk.raw_size() / block_size,
+            total_size: chunk.size(),
+        };
+        header.serialize(&mut self.w)
+    }
+
     fn write_chunk(&mut self, chunk: &Chunk, sparse_file: &File) -> Result<()> {
-        let header = sparse_file.chunk_header(chunk);
-        header.serialize(&mut self.w)?;
+        self.write_chunk_header(chunk, sparse_file.block_size())?;
 
         match *chunk {
             Chunk::Raw { ref buf } => self.w.write_all(buf)?,

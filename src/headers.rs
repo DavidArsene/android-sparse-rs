@@ -26,15 +26,6 @@ pub struct FileHeader {
 }
 
 impl FileHeader {
-    pub fn new(block_size: u32, total_blocks: u32, total_chunks: u32, image_checksum: u32) -> Self {
-        Self {
-            block_size,
-            total_blocks,
-            total_chunks,
-            image_checksum,
-        }
-    }
-
     pub fn deserialize<R: Read>(mut r: R) -> Result<Self> {
         let magic = r.read_u32::<LittleEndian>()?;
         if magic != FILE_MAGIC {
