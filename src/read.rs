@@ -52,10 +52,10 @@ impl<R: Read> Reader<R> {
         let header = FileHeader::deserialize(&mut self.source)?;
         self.block_size = Some(header.block_size);
 
-        let mut sparse_file = match self.source {
-            Source::Reader(_) => File::new(header.block_size),
-            Source::File(ref f) => File::with_backing_file(f.try_clone()?, header.block_size),
-        };
+        let mut sparse_file = File::new(header.block_size);
+        if let Source::File(ref f) = self.source {
+            sparse_file.set_backing_file(f.try_clone()?);
+        }
 
         for _ in 0..header.total_chunks {
             self.read_chunk(&mut sparse_file)?;
@@ -117,10 +117,10 @@ impl Encoder<StdFile> {
 
 impl<R: Read> Encoder<R> {
     pub fn read(mut self) -> Result<File> {
-        let mut sparse_file = match self.source {
-            Source::Reader(_) => File::new(self.block_size),
-            Source::File(ref f) => File::with_backing_file(f.try_clone()?, self.block_size),
-        };
+        let mut sparse_file = File::new(self.block_size);
+        if let Source::File(ref f) = self.source {
+            sparse_file.set_backing_file(f.try_clone()?);
+        }
 
         let block_size = self.block_size as usize;
         let mut block = vec![0; block_size];

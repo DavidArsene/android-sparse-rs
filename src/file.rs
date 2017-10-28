@@ -24,12 +24,8 @@ impl File {
         }
     }
 
-    pub fn with_backing_file(file: StdFile, block_size: u32) -> Self {
-        Self {
-            block_size: block_size,
-            backing_file: Some(file),
-            chunks: Vec::new(),
-        }
+    pub fn set_backing_file(&mut self, file: StdFile) {
+        self.backing_file = Some(file);
     }
 
     pub fn block_size(&self) -> u32 {
