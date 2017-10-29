@@ -8,6 +8,7 @@ use result::Result;
 
 pub const FILE_HEADER_SIZE: u16 = 28;
 pub const CHUNK_HEADER_SIZE: u16 = 12;
+pub const BLOCK_SIZE: u32 = 4096;
 
 const FILE_MAGIC: u32 = 0xed26_ff3a;
 const FILE_FORMAT_VERSION: (u16, u16) = (1, 0);
@@ -19,7 +20,6 @@ const CHUNK_MAGIC_CRC32: u16 = 0xcac4;
 
 #[derive(Clone, Debug)]
 pub struct FileHeader {
-    pub block_size: u32,
     pub total_blocks: u32,
     pub total_chunks: u32,
     pub image_checksum: u32,
@@ -46,9 +46,12 @@ impl FileHeader {
         if chunk_header_size != CHUNK_HEADER_SIZE {
             return Err(format!("Invalid chunk header size: {}", chunk_header_size).into());
         }
+        let block_size = r.read_u32::<LittleEndian>()?;
+        if block_size != BLOCK_SIZE {
+            return Err(format!("Invalid block size: {}", block_size).into());
+        }
 
         Ok(Self {
-            block_size: r.read_u32::<LittleEndian>()?,
             total_blocks: r.read_u32::<LittleEndian>()?,
             total_chunks: r.read_u32::<LittleEndian>()?,
             image_checksum: r.read_u32::<LittleEndian>()?,
@@ -64,8 +67,8 @@ impl FileHeader {
 
         w.write_u16::<LittleEndian>(FILE_HEADER_SIZE)?;
         w.write_u16::<LittleEndian>(CHUNK_HEADER_SIZE)?;
+        w.write_u32::<LittleEndian>(BLOCK_SIZE)?;
 
-        w.write_u32::<LittleEndian>(self.block_size)?;
         w.write_u32::<LittleEndian>(self.total_blocks)?;
         w.write_u32::<LittleEndian>(self.total_chunks)?;
         w.write_u32::<LittleEndian>(self.image_checksum)?;

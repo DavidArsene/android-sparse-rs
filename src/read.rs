@@ -6,6 +6,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 
 use file::File;
 use headers::{ChunkHeader, ChunkType, FileHeader};
+use headers::BLOCK_SIZE;
 use result::Result;
 
 #[derive(Debug)]
@@ -26,14 +27,12 @@ impl<R: Read> Read for Source<R> {
 #[derive(Debug)]
 pub struct Reader<R> {
     source: Source<R>,
-    block_size: Option<u32>,
 }
 
 impl<R: Read> Reader<R> {
     pub fn from_reader(r: R) -> Self {
         Self {
             source: Source::Reader(r),
-            block_size: None,
         }
     }
 }
@@ -42,7 +41,6 @@ impl Reader<StdFile> {
     pub fn from_file(file: StdFile) -> Self {
         Self {
             source: Source::File(file),
-            block_size: None,
         }
     }
 }
@@ -50,9 +48,8 @@ impl Reader<StdFile> {
 impl<R: Read> Reader<R> {
     pub fn read(mut self) -> Result<File> {
         let header = FileHeader::deserialize(&mut self.source)?;
-        self.block_size = Some(header.block_size);
 
-        let mut sparse_file = File::new(header.block_size);
+        let mut sparse_file = File::new();
         if let Source::File(ref f) = self.source {
             sparse_file.set_backing_file(f.try_clone()?);
         }
@@ -66,8 +63,7 @@ impl<R: Read> Reader<R> {
 
     fn read_chunk(&mut self, sparse_file: &mut File) -> Result<()> {
         let header = ChunkHeader::deserialize(&mut self.source)?;
-        let block_size = self.block_size.expect("block_size not set");
-        let size = header.chunk_size * block_size;
+        let size = header.chunk_size * BLOCK_SIZE;
 
         match header.chunk_type {
             ChunkType::Raw => {
@@ -94,35 +90,32 @@ impl<R: Read> Reader<R> {
 #[derive(Debug)]
 pub struct Encoder<R> {
     source: Source<R>,
-    block_size: u32,
 }
 
 impl<R: Read> Encoder<R> {
-    pub fn from_reader(r: R, block_size: u32) -> Self {
+    pub fn from_reader(r: R) -> Self {
         Self {
             source: Source::Reader(r),
-            block_size: block_size,
         }
     }
 }
 
 impl Encoder<StdFile> {
-    pub fn from_file(file: StdFile, block_size: u32) -> Self {
+    pub fn from_file(file: StdFile) -> Self {
         Self {
             source: Source::File(file),
-            block_size: block_size,
         }
     }
 }
 
 impl<R: Read> Encoder<R> {
     pub fn read(mut self) -> Result<File> {
-        let mut sparse_file = File::new(self.block_size);
+        let mut sparse_file = File::new();
         if let Source::File(ref f) = self.source {
             sparse_file.set_backing_file(f.try_clone()?);
         }
 
-        let block_size = self.block_size as usize;
+        let block_size = BLOCK_SIZE as usize;
         let mut block = vec![0; block_size];
         loop {
             let bytes_read = read_all(&mut self.source, &mut block)?;
@@ -144,9 +137,9 @@ impl<R: Read> Encoder<R> {
             let mut fill = [0; 4];
             fill.copy_from_slice(&block[..4]);
             if fill == [0; 4] {
-                sparse_file.add_dont_care(self.block_size)?;
+                sparse_file.add_dont_care(BLOCK_SIZE)?;
             } else {
-                sparse_file.add_fill(fill, self.block_size)?;
+                sparse_file.add_fill(fill, BLOCK_SIZE)?;
             }
             return Ok(());
         }
@@ -156,8 +149,8 @@ impl<R: Read> Encoder<R> {
             Source::File(ref f) => {
                 let mut file = f.try_clone()?;
                 let curr_offset = file.seek(SeekFrom::Current(0))?;
-                let offset = curr_offset - u64::from(self.block_size);
-                sparse_file.add_raw_file_backed(offset, self.block_size)?;
+                let offset = curr_offset - u64::from(BLOCK_SIZE);
+                sparse_file.add_raw_file_backed(offset, BLOCK_SIZE)?;
             }
         }
 
@@ -165,7 +158,7 @@ impl<R: Read> Encoder<R> {
     }
 
     fn is_sparse_block(&self, block: &[u8]) -> bool {
-        if block.len() != self.block_size as usize {
+        if block.len() != BLOCK_SIZE as usize {
             return false;
         }
 

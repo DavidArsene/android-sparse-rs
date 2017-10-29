@@ -3,22 +3,20 @@ use std::slice::Iter;
 
 use convert::TryInto;
 use headers::ChunkType;
-use headers::CHUNK_HEADER_SIZE;
+use headers::{BLOCK_SIZE, CHUNK_HEADER_SIZE};
 use result::Result;
 
 pub type ChunkIter<'a> = Iter<'a, Chunk>;
 
 #[derive(Debug)]
 pub struct File {
-    block_size: u32,
     backing_file: Option<StdFile>,
     chunks: Vec<Chunk>,
 }
 
 impl File {
-    pub fn new(block_size: u32) -> Self {
+    pub fn new() -> Self {
         Self {
-            block_size: block_size,
             backing_file: None,
             chunks: Vec::new(),
         }
@@ -26,10 +24,6 @@ impl File {
 
     pub fn set_backing_file(&mut self, file: StdFile) {
         self.backing_file = Some(file);
-    }
-
-    pub fn block_size(&self) -> u32 {
-        self.block_size
     }
 
     pub fn checksum(&self) -> u32 {
@@ -40,7 +34,7 @@ impl File {
     pub fn num_blocks(&self) -> u32 {
         self.chunks
             .iter()
-            .fold(0, |sum, chunk| sum + chunk.raw_size() / self.block_size)
+            .fold(0, |sum, chunk| sum + chunk.raw_size() / BLOCK_SIZE)
     }
 
     pub fn num_chunks(&self) -> u32 {
@@ -51,8 +45,8 @@ impl File {
     }
 
     pub fn add_raw(&mut self, buf: &[u8]) -> Result<()> {
-        if buf.len() % self.block_size as usize != 0 {
-            return Err("bytes size must be multiple of block_size".into());
+        if buf.len() % BLOCK_SIZE as usize != 0 {
+            return Err("bytes size must be multiple of block size".into());
         }
 
         let new_buf = buf;
@@ -71,8 +65,8 @@ impl File {
             Some(ref f) => f,
             None => return Err("Sparse File not created with backing file".into()),
         };
-        if size % self.block_size != 0 {
-            return Err("size must be multiple of block_size".into());
+        if size % BLOCK_SIZE != 0 {
+            return Err("size must be multiple of block size".into());
         }
 
         let (new_offset, new_size) = (offset, size);
@@ -97,8 +91,8 @@ impl File {
     }
 
     pub fn add_fill(&mut self, fill: [u8; 4], size: u32) -> Result<()> {
-        if size % self.block_size != 0 {
-            return Err("size must be multiple of block_size".into());
+        if size % BLOCK_SIZE != 0 {
+            return Err("size must be multiple of block size".into());
         }
 
         let (new_fill, new_size) = (fill, size);
@@ -114,8 +108,8 @@ impl File {
     }
 
     pub fn add_dont_care(&mut self, size: u32) -> Result<()> {
-        if size % self.block_size != 0 {
-            return Err("size must be multiple of block_size".into());
+        if size % BLOCK_SIZE != 0 {
+            return Err("size must be multiple of block size".into());
         }
 
         let new_size = size;

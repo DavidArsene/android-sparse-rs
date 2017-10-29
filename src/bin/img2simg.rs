@@ -6,8 +6,6 @@ use std::io::BufWriter;
 
 use sparse::result::Result;
 
-const BLOCK_SIZE: u32 = 4096;
-
 struct Args {
     src: String,
     dst: String,
@@ -33,7 +31,7 @@ fn img2simg(args: &Args) -> Result<()> {
 
     let writer = BufWriter::new(fo);
 
-    let sparse_file = sparse::Encoder::from_file(fi, BLOCK_SIZE).read()?;
+    let sparse_file = sparse::Encoder::from_file(fi).read()?;
     sparse::Writer::new(writer).write(&sparse_file)?;
 
     Ok(())
