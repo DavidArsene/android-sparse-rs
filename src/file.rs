@@ -44,23 +44,7 @@ impl File {
             .expect("number of chunks doesn't fit into u32")
     }
 
-    pub fn add_raw(&mut self, buf: &[u8]) -> Result<()> {
-        if buf.len() % BLOCK_SIZE as usize != 0 {
-            return Err("bytes size must be multiple of block size".into());
-        }
-
-        let new_buf = buf;
-        if let Some(&mut Chunk::Raw { ref mut buf }) = self.chunks.iter_mut().last() {
-            buf.extend(new_buf.iter().cloned());
-            return Ok(());
-        }
-
-        let buf = new_buf.to_vec();
-        self.chunks.push(Chunk::Raw { buf });
-        Ok(())
-    }
-
-    pub fn add_raw_file_backed(&mut self, offset: u64, size: u32) -> Result<()> {
+    pub fn add_raw(&mut self, offset: u64, size: u32) -> Result<()> {
         let backing_file = match self.backing_file {
             Some(ref f) => f,
             None => return Err("Sparse File not created with backing file".into()),
@@ -70,7 +54,7 @@ impl File {
         }
 
         let (new_offset, new_size) = (offset, size);
-        if let Some(&mut Chunk::RawFileBacked {
+        if let Some(&mut Chunk::Raw {
             offset,
             ref mut size,
             ..
@@ -82,7 +66,7 @@ impl File {
             }
         }
 
-        self.chunks.push(Chunk::RawFileBacked {
+        self.chunks.push(Chunk::Raw {
             file: backing_file.try_clone()?,
             offset: offset,
             size: size,
@@ -134,8 +118,7 @@ impl File {
 
 #[derive(Debug)]
 pub enum Chunk {
-    Raw { buf: Vec<u8> },
-    RawFileBacked {
+    Raw {
         file: StdFile,
         offset: u64,
         size: u32,
@@ -148,10 +131,7 @@ pub enum Chunk {
 impl Chunk {
     pub fn size(&self) -> u32 {
         let body_size = match *self {
-            Chunk::Raw { ref buf } => buf.len()
-                .try_into()
-                .expect("chunk size doesn't fit into u32"),
-            Chunk::RawFileBacked { size, .. } => size,
+            Chunk::Raw { size, .. } => size,
             Chunk::Fill { .. } | Chunk::Crc32 { .. } => 4,
             Chunk::DontCare { .. } => 0,
         };
@@ -160,19 +140,14 @@ impl Chunk {
 
     pub fn raw_size(&self) -> u32 {
         match *self {
-            Chunk::Raw { ref buf } => buf.len()
-                .try_into()
-                .expect("raw chunk size doesn't fit into u32"),
-            Chunk::RawFileBacked { size, .. } |
-            Chunk::Fill { size, .. } |
-            Chunk::DontCare { size } => size,
+            Chunk::Raw { size, .. } | Chunk::Fill { size, .. } | Chunk::DontCare { size } => size,
             Chunk::Crc32 { .. } => 0,
         }
     }
 
     pub fn chunk_type(&self) -> ChunkType {
         match *self {
-            Chunk::Raw { .. } | Chunk::RawFileBacked { .. } => ChunkType::Raw,
+            Chunk::Raw { .. } => ChunkType::Raw,
             Chunk::Fill { .. } => ChunkType::Fill,
             Chunk::DontCare { .. } => ChunkType::DontCare,
             Chunk::Crc32 { .. } => ChunkType::Crc32,

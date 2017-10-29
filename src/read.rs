@@ -1,6 +1,5 @@
 use std::fs::File as StdFile;
 use std::io::{ErrorKind, Read, Seek, SeekFrom};
-use std::io::Result as IoResult;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
@@ -10,49 +9,20 @@ use headers::BLOCK_SIZE;
 use result::Result;
 
 #[derive(Debug)]
-enum Source<R> {
-    Reader(R),
-    File(StdFile),
+pub struct Reader {
+    src: StdFile,
 }
 
-impl<R: Read> Read for Source<R> {
-    fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
-        match *self {
-            Source::Reader(ref mut r) => r.read(buf),
-            Source::File(ref mut f) => f.read(buf),
-        }
+impl Reader {
+    pub fn new(src: StdFile) -> Self {
+        Self { src }
     }
-}
 
-#[derive(Debug)]
-pub struct Reader<R> {
-    source: Source<R>,
-}
-
-impl<R: Read> Reader<R> {
-    pub fn from_reader(r: R) -> Self {
-        Self {
-            source: Source::Reader(r),
-        }
-    }
-}
-
-impl Reader<StdFile> {
-    pub fn from_file(file: StdFile) -> Self {
-        Self {
-            source: Source::File(file),
-        }
-    }
-}
-
-impl<R: Read> Reader<R> {
     pub fn read(mut self) -> Result<File> {
-        let header = FileHeader::deserialize(&mut self.source)?;
+        let header = FileHeader::deserialize(&mut self.src)?;
 
         let mut sparse_file = File::new();
-        if let Source::File(ref f) = self.source {
-            sparse_file.set_backing_file(f.try_clone()?);
-        }
+        sparse_file.set_backing_file(self.src.try_clone()?);
 
         for _ in 0..header.total_chunks {
             self.read_chunk(&mut sparse_file)?;
@@ -62,23 +32,23 @@ impl<R: Read> Reader<R> {
     }
 
     fn read_chunk(&mut self, sparse_file: &mut File) -> Result<()> {
-        let header = ChunkHeader::deserialize(&mut self.source)?;
+        let header = ChunkHeader::deserialize(&mut self.src)?;
         let size = header.chunk_size * BLOCK_SIZE;
 
         match header.chunk_type {
             ChunkType::Raw => {
-                let mut buf = vec![0; size as usize];
-                self.source.read_exact(&mut buf)?;
-                sparse_file.add_raw(&buf)?;
+                let off = self.src.seek(SeekFrom::Current(0))?;
+                sparse_file.add_raw(off, size)?;
+                self.src.seek(SeekFrom::Current(i64::from(size)))?;
             }
             ChunkType::Fill => {
                 let mut fill = [0; 4];
-                self.source.read_exact(&mut fill)?;
+                self.src.read_exact(&mut fill)?;
                 sparse_file.add_fill(fill, size)?;
             }
             ChunkType::DontCare => sparse_file.add_dont_care(size)?,
             ChunkType::Crc32 => {
-                let crc = self.source.read_u32::<LittleEndian>()?;
+                let crc = self.src.read_u32::<LittleEndian>()?;
                 sparse_file.add_crc32(crc)?;
             }
         }
@@ -88,37 +58,23 @@ impl<R: Read> Reader<R> {
 }
 
 #[derive(Debug)]
-pub struct Encoder<R> {
-    source: Source<R>,
+pub struct Encoder {
+    src: StdFile,
 }
 
-impl<R: Read> Encoder<R> {
-    pub fn from_reader(r: R) -> Self {
-        Self {
-            source: Source::Reader(r),
-        }
+impl Encoder {
+    pub fn new(src: StdFile) -> Self {
+        Self { src }
     }
-}
 
-impl Encoder<StdFile> {
-    pub fn from_file(file: StdFile) -> Self {
-        Self {
-            source: Source::File(file),
-        }
-    }
-}
-
-impl<R: Read> Encoder<R> {
     pub fn read(mut self) -> Result<File> {
         let mut sparse_file = File::new();
-        if let Source::File(ref f) = self.source {
-            sparse_file.set_backing_file(f.try_clone()?);
-        }
+        sparse_file.set_backing_file(self.src.try_clone()?);
 
         let block_size = BLOCK_SIZE as usize;
         let mut block = vec![0; block_size];
         loop {
-            let bytes_read = read_all(&mut self.source, &mut block)?;
+            let bytes_read = read_all(&mut self.src, &mut block)?;
             self.read_block(&block[..bytes_read], &mut sparse_file)?;
             if bytes_read != block_size {
                 break;
@@ -128,7 +84,7 @@ impl<R: Read> Encoder<R> {
         Ok(sparse_file)
     }
 
-    fn read_block(&self, block: &[u8], sparse_file: &mut File) -> Result<()> {
+    fn read_block(&mut self, block: &[u8], sparse_file: &mut File) -> Result<()> {
         if block.is_empty() {
             return Ok(());
         }
@@ -144,15 +100,9 @@ impl<R: Read> Encoder<R> {
             return Ok(());
         }
 
-        match self.source {
-            Source::Reader(_) => sparse_file.add_raw(block)?,
-            Source::File(ref f) => {
-                let mut file = f.try_clone()?;
-                let curr_offset = file.seek(SeekFrom::Current(0))?;
-                let offset = curr_offset - u64::from(BLOCK_SIZE);
-                sparse_file.add_raw_file_backed(offset, BLOCK_SIZE)?;
-            }
-        }
+        let curr_off = self.src.seek(SeekFrom::Current(0))?;
+        let off = curr_off - u64::from(BLOCK_SIZE);
+        sparse_file.add_raw(off, BLOCK_SIZE)?;
 
         Ok(())
     }

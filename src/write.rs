@@ -53,8 +53,7 @@ impl<W: Write> Writer<W> {
         self.write_chunk_header(chunk)?;
 
         match *chunk {
-            Chunk::Raw { ref buf } => self.w.write_all(buf)?,
-            Chunk::RawFileBacked {
+            Chunk::Raw {
                 ref file,
                 offset,
                 size,
@@ -88,8 +87,7 @@ impl<W: Write> Decoder<W> {
 
     fn write_chunk(&mut self, chunk: &Chunk) -> Result<()> {
         match *chunk {
-            Chunk::Raw { ref buf } => self.w.write_all(buf)?,
-            Chunk::RawFileBacked {
+            Chunk::Raw {
                 ref file,
                 offset,
                 size,
