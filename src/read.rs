@@ -31,20 +31,24 @@ impl<'a> Reader<'a> {
 
     fn read_chunk(&mut self, mut src: &mut StdFile) -> Result<()> {
         let header = ChunkHeader::deserialize(&mut src)?;
-        let size = header.chunk_size * BLOCK_SIZE;
+        let num_blocks = header.chunk_size;
 
         match header.chunk_type {
             ChunkType::Raw => {
                 let off = src.seek(SeekFrom::Current(0))?;
-                self.sparse_file.add_raw(off, size)?;
-                src.seek(SeekFrom::Current(i64::from(size)))?;
+                self.sparse_file.add_raw(off, num_blocks)?;
+                let size = i64::from(num_blocks * BLOCK_SIZE);
+                src.seek(SeekFrom::Current(size))?;
             }
+
             ChunkType::Fill => {
                 let mut fill = [0; 4];
                 src.read_exact(&mut fill)?;
-                self.sparse_file.add_fill(fill, size)?;
+                self.sparse_file.add_fill(fill, num_blocks)?;
             }
-            ChunkType::DontCare => self.sparse_file.add_dont_care(size)?,
+
+            ChunkType::DontCare => self.sparse_file.add_dont_care(num_blocks)?,
+
             ChunkType::Crc32 => {
                 let crc = src.read_u32::<LittleEndian>()?;
                 self.sparse_file.add_crc32(crc)?;
@@ -86,20 +90,22 @@ impl<'a> Encoder<'a> {
             return Ok(());
         }
 
+        let num_blocks = 1;
+
         if is_sparse_block(block) {
             let mut fill = [0; 4];
             fill.copy_from_slice(&block[..4]);
             if fill == [0; 4] {
-                self.sparse_file.add_dont_care(BLOCK_SIZE)?;
+                self.sparse_file.add_dont_care(num_blocks)?;
             } else {
-                self.sparse_file.add_fill(fill, BLOCK_SIZE)?;
+                self.sparse_file.add_fill(fill, num_blocks)?;
             }
             return Ok(());
         }
 
         let curr_off = src.seek(SeekFrom::Current(0))?;
         let off = curr_off - u64::from(BLOCK_SIZE);
-        self.sparse_file.add_raw(off, BLOCK_SIZE)?;
+        self.sparse_file.add_raw(off, num_blocks)?;
 
         Ok(())
     }

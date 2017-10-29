@@ -45,10 +45,9 @@ impl<'a> Writer<'a> {
 
         match *chunk {
             Chunk::Raw {
-                ref file,
-                offset,
-                size,
-            } => copy_from_file(file, &mut dst, offset, size as usize)?,
+                ref file, offset, ..
+            } => copy_from_file(file, &mut dst, offset, chunk.raw_size() as usize)?,
+
             Chunk::Fill { ref fill, .. } => dst.write_all(fill)?,
             Chunk::DontCare { .. } => {}
             Chunk::Crc32 { crc } => dst.write_u32::<LittleEndian>(crc)?,
@@ -88,17 +87,27 @@ impl<'a> Decoder<'a> {
     fn write_chunk<W: Write>(chunk: &Chunk, mut dst: W) -> Result<()> {
         match *chunk {
             Chunk::Raw {
-                ref file,
-                offset,
-                size,
-            } => copy_from_file(file, &mut dst, offset, size as usize)?,
-            Chunk::Fill { ref fill, size } => for i in 0..size {
-                let idx = i as usize % 4;
-                dst.write_all(&fill[idx..idx + 1])?;
-            },
-            Chunk::DontCare { size } => for _ in 0..size {
-                dst.write_all(&[0])?;
-            },
+                ref file, offset, ..
+            } => copy_from_file(file, &mut dst, offset, chunk.raw_size() as usize)?,
+
+            Chunk::Fill { fill, num_blocks } => {
+                let block = fill.iter()
+                    .cycle()
+                    .cloned()
+                    .take(BLOCK_SIZE as usize)
+                    .collect::<Vec<_>>();
+                for _ in 0..num_blocks {
+                    dst.write_all(&block)?;
+                }
+            }
+
+            Chunk::DontCare { num_blocks } => {
+                let block = [0; BLOCK_SIZE as usize];
+                for _ in 0..num_blocks {
+                    dst.write_all(&block)?;
+                }
+            }
+
             Chunk::Crc32 { .. } => (),
         };
 

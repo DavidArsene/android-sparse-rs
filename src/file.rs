@@ -44,40 +44,29 @@ impl File {
             .expect("number of chunks doesn't fit into u32")
     }
 
-    pub fn add_raw(&mut self, offset: u64, size: u32) -> Result<()> {
+    pub fn add_raw(&mut self, offset: u64, num_blocks: u32) -> Result<()> {
         let backing_file = match self.backing_file {
             Some(ref f) => f,
             None => return Err("Sparse File not created with backing file".into()),
         };
-        if size % BLOCK_SIZE != 0 {
-            return Err("size must be multiple of block size".into());
-        }
 
         let chunk = Chunk::Raw {
             file: backing_file.try_clone()?,
             offset: offset,
-            size: size,
+            num_blocks: num_blocks,
         };
         self.chunks.push(chunk);
         Ok(())
     }
 
-    pub fn add_fill(&mut self, fill: [u8; 4], size: u32) -> Result<()> {
-        if size % BLOCK_SIZE != 0 {
-            return Err("size must be multiple of block size".into());
-        }
-
-        let chunk = Chunk::Fill { fill, size };
+    pub fn add_fill(&mut self, fill: [u8; 4], num_blocks: u32) -> Result<()> {
+        let chunk = Chunk::Fill { fill, num_blocks };
         self.chunks.push(chunk);
         Ok(())
     }
 
-    pub fn add_dont_care(&mut self, size: u32) -> Result<()> {
-        if size % BLOCK_SIZE != 0 {
-            return Err("size must be multiple of block size".into());
-        }
-
-        let chunk = Chunk::DontCare { size };
+    pub fn add_dont_care(&mut self, num_blocks: u32) -> Result<()> {
+        let chunk = Chunk::DontCare { num_blocks };
         self.chunks.push(chunk);
         Ok(())
     }
@@ -98,17 +87,17 @@ pub enum Chunk {
     Raw {
         file: StdFile,
         offset: u64,
-        size: u32,
+        num_blocks: u32,
     },
-    Fill { fill: [u8; 4], size: u32 },
-    DontCare { size: u32 },
+    Fill { fill: [u8; 4], num_blocks: u32 },
+    DontCare { num_blocks: u32 },
     Crc32 { crc: u32 },
 }
 
 impl Chunk {
     pub fn size(&self) -> u32 {
         let body_size = match *self {
-            Chunk::Raw { size, .. } => size,
+            Chunk::Raw { .. } => self.raw_size(),
             Chunk::Fill { .. } | Chunk::Crc32 { .. } => 4,
             Chunk::DontCare { .. } => 0,
         };
@@ -117,7 +106,9 @@ impl Chunk {
 
     pub fn raw_size(&self) -> u32 {
         match *self {
-            Chunk::Raw { size, .. } | Chunk::Fill { size, .. } | Chunk::DontCare { size } => size,
+            Chunk::Raw { num_blocks, .. } |
+            Chunk::Fill { num_blocks, .. } |
+            Chunk::DontCare { num_blocks } => num_blocks * BLOCK_SIZE,
             Chunk::Crc32 { .. } => 0,
         }
     }
