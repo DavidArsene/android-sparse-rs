@@ -53,24 +53,12 @@ impl File {
             return Err("size must be multiple of block size".into());
         }
 
-        let (new_offset, new_size) = (offset, size);
-        if let Some(&mut Chunk::Raw {
-            offset,
-            ref mut size,
-            ..
-        }) = self.chunks.iter_mut().last()
-        {
-            if new_offset == offset + u64::from(*size) {
-                *size += new_size;
-                return Ok(());
-            }
-        }
-
-        self.chunks.push(Chunk::Raw {
+        let chunk = Chunk::Raw {
             file: backing_file.try_clone()?,
             offset: offset,
             size: size,
-        });
+        };
+        self.chunks.push(chunk);
         Ok(())
     }
 
@@ -79,15 +67,8 @@ impl File {
             return Err("size must be multiple of block size".into());
         }
 
-        let (new_fill, new_size) = (fill, size);
-        if let Some(&mut Chunk::Fill { fill, ref mut size }) = self.chunks.iter_mut().last() {
-            if fill == new_fill {
-                *size += new_size;
-                return Ok(());
-            }
-        }
-
-        self.chunks.push(Chunk::Fill { fill, size });
+        let chunk = Chunk::Fill { fill, size };
+        self.chunks.push(chunk);
         Ok(())
     }
 
@@ -96,18 +77,14 @@ impl File {
             return Err("size must be multiple of block size".into());
         }
 
-        let new_size = size;
-        if let Some(&mut Chunk::DontCare { ref mut size }) = self.chunks.iter_mut().last() {
-            *size += new_size;
-            return Ok(());
-        }
-
-        self.chunks.push(Chunk::DontCare { size });
+        let chunk = Chunk::DontCare { size };
+        self.chunks.push(chunk);
         Ok(())
     }
 
     pub fn add_crc32(&mut self, crc: u32) -> Result<()> {
-        self.chunks.push(Chunk::Crc32 { crc });
+        let chunk = Chunk::Crc32 { crc };
+        self.chunks.push(chunk);
         Ok(())
     }
 
