@@ -9,47 +9,45 @@ use headers::BLOCK_SIZE;
 use result::Result;
 
 #[derive(Debug)]
-pub struct Reader {
-    src: StdFile,
+pub struct Reader<'a> {
+    sparse_file: &'a mut File,
 }
 
-impl Reader {
-    pub fn new(src: StdFile) -> Self {
-        Self { src }
+impl<'a> Reader<'a> {
+    pub fn new(sparse_file: &'a mut File) -> Self {
+        Self { sparse_file }
     }
 
-    pub fn read(mut self) -> Result<File> {
-        let header = FileHeader::deserialize(&mut self.src)?;
+    pub fn read_from(&mut self, mut src: StdFile) -> Result<()> {
+        self.sparse_file.set_backing_file(src.try_clone()?);
 
-        let mut sparse_file = File::new();
-        sparse_file.set_backing_file(self.src.try_clone()?);
-
+        let header = FileHeader::deserialize(&mut src)?;
         for _ in 0..header.total_chunks {
-            self.read_chunk(&mut sparse_file)?;
+            self.read_chunk(&mut src)?;
         }
 
-        Ok(sparse_file)
+        Ok(())
     }
 
-    fn read_chunk(&mut self, sparse_file: &mut File) -> Result<()> {
-        let header = ChunkHeader::deserialize(&mut self.src)?;
+    fn read_chunk(&mut self, mut src: &mut StdFile) -> Result<()> {
+        let header = ChunkHeader::deserialize(&mut src)?;
         let size = header.chunk_size * BLOCK_SIZE;
 
         match header.chunk_type {
             ChunkType::Raw => {
-                let off = self.src.seek(SeekFrom::Current(0))?;
-                sparse_file.add_raw(off, size)?;
-                self.src.seek(SeekFrom::Current(i64::from(size)))?;
+                let off = src.seek(SeekFrom::Current(0))?;
+                self.sparse_file.add_raw(off, size)?;
+                src.seek(SeekFrom::Current(i64::from(size)))?;
             }
             ChunkType::Fill => {
                 let mut fill = [0; 4];
-                self.src.read_exact(&mut fill)?;
-                sparse_file.add_fill(fill, size)?;
+                src.read_exact(&mut fill)?;
+                self.sparse_file.add_fill(fill, size)?;
             }
-            ChunkType::DontCare => sparse_file.add_dont_care(size)?,
+            ChunkType::DontCare => self.sparse_file.add_dont_care(size)?,
             ChunkType::Crc32 => {
-                let crc = self.src.read_u32::<LittleEndian>()?;
-                sparse_file.add_crc32(crc)?;
+                let crc = src.read_u32::<LittleEndian>()?;
+                self.sparse_file.add_crc32(crc)?;
             }
         }
 
@@ -58,70 +56,69 @@ impl Reader {
 }
 
 #[derive(Debug)]
-pub struct Encoder {
-    src: StdFile,
+pub struct Encoder<'a> {
+    sparse_file: &'a mut File,
 }
 
-impl Encoder {
-    pub fn new(src: StdFile) -> Self {
-        Self { src }
+impl<'a> Encoder<'a> {
+    pub fn new(sparse_file: &'a mut File) -> Self {
+        Self { sparse_file }
     }
 
-    pub fn read(mut self) -> Result<File> {
-        let mut sparse_file = File::new();
-        sparse_file.set_backing_file(self.src.try_clone()?);
+    pub fn read_from(&mut self, mut src: StdFile) -> Result<()> {
+        self.sparse_file.set_backing_file(src.try_clone()?);
 
         let block_size = BLOCK_SIZE as usize;
         let mut block = vec![0; block_size];
         loop {
-            let bytes_read = read_all(&mut self.src, &mut block)?;
-            self.read_block(&block[..bytes_read], &mut sparse_file)?;
+            let bytes_read = read_all(&mut src, &mut block)?;
+            self.read_block(&block[..bytes_read], &mut src)?;
             if bytes_read != block_size {
                 break;
             }
         }
 
-        Ok(sparse_file)
+        Ok(())
     }
 
-    fn read_block(&mut self, block: &[u8], sparse_file: &mut File) -> Result<()> {
+    fn read_block(&mut self, block: &[u8], src: &mut StdFile) -> Result<()> {
         if block.is_empty() {
             return Ok(());
         }
 
-        if self.is_sparse_block(block) {
+        if is_sparse_block(block) {
             let mut fill = [0; 4];
             fill.copy_from_slice(&block[..4]);
             if fill == [0; 4] {
-                sparse_file.add_dont_care(BLOCK_SIZE)?;
+                self.sparse_file.add_dont_care(BLOCK_SIZE)?;
             } else {
-                sparse_file.add_fill(fill, BLOCK_SIZE)?;
+                self.sparse_file.add_fill(fill, BLOCK_SIZE)?;
             }
             return Ok(());
         }
 
-        let curr_off = self.src.seek(SeekFrom::Current(0))?;
+        let curr_off = src.seek(SeekFrom::Current(0))?;
         let off = curr_off - u64::from(BLOCK_SIZE);
-        sparse_file.add_raw(off, BLOCK_SIZE)?;
+        self.sparse_file.add_raw(off, BLOCK_SIZE)?;
 
         Ok(())
     }
+}
 
-    fn is_sparse_block(&self, block: &[u8]) -> bool {
-        if block.len() != BLOCK_SIZE as usize {
+fn is_sparse_block(block: &[u8]) -> bool {
+    if block.len() != BLOCK_SIZE as usize {
+        return false;
+    }
+
+    let mut words = block.chunks(4);
+    let first = words.next().expect("block is empty");
+    for word in words {
+        if word != first {
             return false;
         }
-
-        let mut words = block.chunks(4);
-        let first = words.next().expect("block is empty");
-        for word in words {
-            if word != first {
-                return false;
-            }
-        }
-
-        true
     }
+
+    true
 }
 
 fn read_all<R: Read>(mut r: R, mut buf: &mut [u8]) -> Result<usize> {

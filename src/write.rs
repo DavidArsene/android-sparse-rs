@@ -12,92 +12,92 @@ use result::Result;
 const COPY_BUF_SIZE: usize = 4096;
 
 #[derive(Debug)]
-pub struct Writer<W> {
-    w: W,
+pub struct Writer<'a> {
+    sparse_file: &'a mut File,
 }
 
-impl<W: Write> Writer<W> {
-    pub fn new(w: W) -> Self {
-        Self { w }
+impl<'a> Writer<'a> {
+    pub fn new(sparse_file: &'a mut File) -> Self {
+        Self { sparse_file }
     }
 
-    pub fn write(mut self, sparse_file: &File) -> Result<()> {
-        self.write_file_header(sparse_file)?;
+    pub fn write_to<W: Write>(&mut self, mut dst: W) -> Result<()> {
+        self.write_file_header(&mut dst)?;
 
-        for chunk in sparse_file.chunk_iter() {
-            self.write_chunk(chunk)?;
+        for chunk in self.sparse_file.chunk_iter() {
+            Self::write_chunk(chunk, &mut dst)?;
         }
 
         Ok(())
     }
 
-    fn write_file_header(&mut self, sparse_file: &File) -> Result<()> {
+    fn write_file_header<W: Write>(&mut self, mut dst: W) -> Result<()> {
         let header = FileHeader {
-            total_blocks: sparse_file.num_blocks(),
-            total_chunks: sparse_file.num_chunks(),
-            image_checksum: sparse_file.checksum(),
+            total_blocks: self.sparse_file.num_blocks(),
+            total_chunks: self.sparse_file.num_chunks(),
+            image_checksum: self.sparse_file.checksum(),
         };
-        header.serialize(&mut self.w)
+        header.serialize(&mut dst)
     }
 
-    fn write_chunk_header(&mut self, chunk: &Chunk) -> Result<()> {
+    fn write_chunk<W: Write>(chunk: &Chunk, mut dst: W) -> Result<()> {
+        Self::write_chunk_header(chunk, &mut dst)?;
+
+        match *chunk {
+            Chunk::Raw {
+                ref file,
+                offset,
+                size,
+            } => copy_from_file(file, &mut dst, offset, size as usize)?,
+            Chunk::Fill { ref fill, .. } => dst.write_all(fill)?,
+            Chunk::DontCare { .. } => {}
+            Chunk::Crc32 { crc } => dst.write_u32::<LittleEndian>(crc)?,
+        }
+
+        Ok(())
+    }
+
+    fn write_chunk_header<W: Write>(chunk: &Chunk, mut dst: W) -> Result<()> {
         let header = ChunkHeader {
             chunk_type: chunk.chunk_type(),
             chunk_size: chunk.raw_size() / BLOCK_SIZE,
             total_size: chunk.size(),
         };
-        header.serialize(&mut self.w)
-    }
-
-    fn write_chunk(&mut self, chunk: &Chunk) -> Result<()> {
-        self.write_chunk_header(chunk)?;
-
-        match *chunk {
-            Chunk::Raw {
-                ref file,
-                offset,
-                size,
-            } => copy_from_file(file, &mut self.w, offset, size as usize)?,
-            Chunk::Fill { ref fill, .. } => self.w.write_all(fill)?,
-            Chunk::DontCare { .. } => {}
-            Chunk::Crc32 { crc } => self.w.write_u32::<LittleEndian>(crc)?,
-        }
-
-        Ok(())
+        header.serialize(&mut dst)
     }
 }
 
 #[derive(Debug)]
-pub struct Decoder<W> {
-    w: W,
+pub struct Decoder<'a> {
+    sparse_file: &'a mut File,
 }
 
-impl<W: Write> Decoder<W> {
-    pub fn new(w: W) -> Self {
-        Self { w }
+impl<'a> Decoder<'a> {
+    pub fn new(sparse_file: &'a mut File) -> Self {
+        Self { sparse_file }
     }
 
-    pub fn write(mut self, sparse_file: &File) -> Result<()> {
-        for chunk in sparse_file.chunk_iter() {
-            self.write_chunk(chunk)?;
+    pub fn write_to<W: Write>(&mut self, mut dst: W) -> Result<()> {
+        for chunk in self.sparse_file.chunk_iter() {
+            Self::write_chunk(chunk, &mut dst)?;
         }
 
         Ok(())
     }
 
-    fn write_chunk(&mut self, chunk: &Chunk) -> Result<()> {
+    fn write_chunk<W: Write>(chunk: &Chunk, mut dst: W) -> Result<()> {
         match *chunk {
             Chunk::Raw {
                 ref file,
                 offset,
                 size,
-            } => copy_from_file(file, &mut self.w, offset, size as usize)?,
+            } => copy_from_file(file, &mut dst, offset, size as usize)?,
             Chunk::Fill { ref fill, size } => for i in 0..size {
                 let idx = i as usize % 4;
-                self.w.write_all(&fill[idx..idx + 1])?;
+                dst.write_all(&fill[idx..idx + 1])?;
             },
             Chunk::DontCare { size } => for _ in 0..size {
-                self.w.write_all(&[0])?;
+                dst.write_all(&[0])?;
             },
             Chunk::Crc32 { .. } => (),
         };
