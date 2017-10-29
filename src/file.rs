@@ -10,20 +10,12 @@ pub type ChunkIter<'a> = Iter<'a, Chunk>;
 
 #[derive(Debug)]
 pub struct File {
-    backing_file: Option<StdFile>,
     chunks: Vec<Chunk>,
 }
 
 impl File {
     pub fn new() -> Self {
-        Self {
-            backing_file: None,
-            chunks: Vec::new(),
-        }
-    }
-
-    pub fn set_backing_file(&mut self, file: StdFile) {
-        self.backing_file = Some(file);
+        Self { chunks: Vec::new() }
     }
 
     pub fn checksum(&self) -> u32 {
@@ -44,16 +36,11 @@ impl File {
             .expect("number of chunks doesn't fit into u32")
     }
 
-    pub fn add_raw(&mut self, offset: u64, num_blocks: u32) -> Result<()> {
-        let backing_file = match self.backing_file {
-            Some(ref f) => f,
-            None => return Err("Sparse File not created with backing file".into()),
-        };
-
+    pub fn add_raw(&mut self, file: StdFile, offset: u64, num_blocks: u32) -> Result<()> {
         let chunk = Chunk::Raw {
-            file: backing_file.try_clone()?,
-            offset: offset,
-            num_blocks: num_blocks,
+            file,
+            offset,
+            num_blocks,
         };
         self.chunks.push(chunk);
         Ok(())

@@ -19,8 +19,6 @@ impl<'a> Reader<'a> {
     }
 
     pub fn read_from(&mut self, mut src: StdFile) -> Result<()> {
-        self.sparse_file.set_backing_file(src.try_clone()?);
-
         let header = FileHeader::deserialize(&mut src)?;
         for _ in 0..header.total_chunks {
             self.read_chunk(&mut src)?;
@@ -36,7 +34,7 @@ impl<'a> Reader<'a> {
         match header.chunk_type {
             ChunkType::Raw => {
                 let off = src.seek(SeekFrom::Current(0))?;
-                self.sparse_file.add_raw(off, num_blocks)?;
+                self.sparse_file.add_raw(src.try_clone()?, off, num_blocks)?;
                 let size = i64::from(num_blocks * BLOCK_SIZE);
                 src.seek(SeekFrom::Current(size))?;
             }
@@ -70,8 +68,6 @@ impl<'a> Encoder<'a> {
     }
 
     pub fn read_from(&mut self, mut src: StdFile) -> Result<()> {
-        self.sparse_file.set_backing_file(src.try_clone()?);
-
         let block_size = BLOCK_SIZE as usize;
         let mut block = vec![0; block_size];
         loop {
@@ -105,7 +101,7 @@ impl<'a> Encoder<'a> {
 
         let curr_off = src.seek(SeekFrom::Current(0))?;
         let off = curr_off - u64::from(BLOCK_SIZE);
-        self.sparse_file.add_raw(off, num_blocks)?;
+        self.sparse_file.add_raw(src.try_clone()?, off, num_blocks)?;
 
         Ok(())
     }
