@@ -4,7 +4,6 @@ use std::slice::Iter;
 use convert::TryInto;
 use headers::ChunkType;
 use headers::{BLOCK_SIZE, CHUNK_HEADER_SIZE};
-use result::Result;
 
 pub type ChunkIter<'a> = Iter<'a, Chunk>;
 
@@ -36,32 +35,8 @@ impl File {
             .expect("number of chunks doesn't fit into u32")
     }
 
-    pub fn add_raw(&mut self, file: StdFile, offset: u64, num_blocks: u32) -> Result<()> {
-        let chunk = Chunk::Raw {
-            file,
-            offset,
-            num_blocks,
-        };
+    pub fn add_chunk(&mut self, chunk: Chunk) {
         self.chunks.push(chunk);
-        Ok(())
-    }
-
-    pub fn add_fill(&mut self, fill: [u8; 4], num_blocks: u32) -> Result<()> {
-        let chunk = Chunk::Fill { fill, num_blocks };
-        self.chunks.push(chunk);
-        Ok(())
-    }
-
-    pub fn add_dont_care(&mut self, num_blocks: u32) -> Result<()> {
-        let chunk = Chunk::DontCare { num_blocks };
-        self.chunks.push(chunk);
-        Ok(())
-    }
-
-    pub fn add_crc32(&mut self, crc: u32) -> Result<()> {
-        let chunk = Chunk::Crc32 { crc };
-        self.chunks.push(chunk);
-        Ok(())
     }
 
     pub fn chunk_iter(&self) -> ChunkIter {

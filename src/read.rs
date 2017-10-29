@@ -3,7 +3,7 @@ use std::io::{ErrorKind, Read, Seek, SeekFrom};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use file::File;
+use file::{Chunk, File};
 use headers::{ChunkHeader, ChunkType, FileHeader};
 use headers::BLOCK_SIZE;
 use result::Result;
@@ -31,28 +31,30 @@ impl<'a> Reader<'a> {
         let header = ChunkHeader::deserialize(&mut src)?;
         let num_blocks = header.chunk_size;
 
-        match header.chunk_type {
+        let chunk = match header.chunk_type {
             ChunkType::Raw => {
                 let off = src.seek(SeekFrom::Current(0))?;
-                self.sparse_file.add_raw(src.try_clone()?, off, num_blocks)?;
                 let size = i64::from(num_blocks * BLOCK_SIZE);
                 src.seek(SeekFrom::Current(size))?;
+                Chunk::Raw {
+                    file: src.try_clone()?,
+                    offset: off,
+                    num_blocks: num_blocks,
+                }
             }
 
             ChunkType::Fill => {
-                let mut fill = [0; 4];
-                src.read_exact(&mut fill)?;
-                self.sparse_file.add_fill(fill, num_blocks)?;
+                let fill = read4(&mut src)?;
+                Chunk::Fill { fill, num_blocks }
             }
 
-            ChunkType::DontCare => self.sparse_file.add_dont_care(num_blocks)?,
+            ChunkType::DontCare => Chunk::DontCare { num_blocks },
 
-            ChunkType::Crc32 => {
-                let crc = src.read_u32::<LittleEndian>()?;
-                self.sparse_file.add_crc32(crc)?;
-            }
-        }
-
+            ChunkType::Crc32 => Chunk::Crc32 {
+                crc: src.read_u32::<LittleEndian>()?,
+            },
+        };
+        self.sparse_file.add_chunk(chunk);
         Ok(())
     }
 }
@@ -86,24 +88,31 @@ impl<'a> Encoder<'a> {
             return Ok(());
         }
 
-        let num_blocks = 1;
-
-        if is_sparse_block(block) {
-            let mut fill = [0; 4];
-            fill.copy_from_slice(&block[..4]);
-            if fill == [0; 4] {
-                self.sparse_file.add_dont_care(num_blocks)?;
-            } else {
-                self.sparse_file.add_fill(fill, num_blocks)?;
-            }
-            return Ok(());
-        }
-
-        let curr_off = src.seek(SeekFrom::Current(0))?;
-        let off = curr_off - u64::from(BLOCK_SIZE);
-        self.sparse_file.add_raw(src.try_clone()?, off, num_blocks)?;
+        let chunk = Self::chunk_from_block(block, src)?;
+        self.sparse_file.add_chunk(chunk);
 
         Ok(())
+    }
+
+    fn chunk_from_block(block: &[u8], src: &StdFile) -> Result<Chunk> {
+        let num_blocks = 1;
+        let chunk = if is_sparse_block(block) {
+            let fill = read4(block)?;
+            if fill == [0; 4] {
+                Chunk::DontCare { num_blocks }
+            } else {
+                Chunk::Fill { fill, num_blocks }
+            }
+        } else {
+            let mut file = src.try_clone()?;
+            let curr_off = file.seek(SeekFrom::Current(0))?;
+            Chunk::Raw {
+                file: file,
+                offset: curr_off - u64::from(BLOCK_SIZE),
+                num_blocks: num_blocks,
+            }
+        };
+        Ok(chunk)
     }
 }
 
@@ -121,6 +130,12 @@ fn is_sparse_block(block: &[u8]) -> bool {
     }
 
     true
+}
+
+fn read4<R: Read>(mut r: R) -> Result<[u8; 4]> {
+    let mut buf = [0; 4];
+    r.read_exact(&mut buf)?;
+    Ok(buf)
 }
 
 fn read_all<R: Read>(mut r: R, mut buf: &mut [u8]) -> Result<usize> {
