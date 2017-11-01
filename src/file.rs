@@ -7,7 +7,7 @@ use headers::{BLOCK_SIZE, CHUNK_HEADER_SIZE};
 
 pub type ChunkIter<'a> = Iter<'a, Chunk>;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct File {
     chunks: Vec<Chunk>,
 }
