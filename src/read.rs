@@ -62,11 +62,15 @@ impl<'a> Reader<'a> {
 #[derive(Debug)]
 pub struct Encoder<'a> {
     sparse_file: &'a mut File,
+    chunk: Option<Chunk>,
 }
 
 impl<'a> Encoder<'a> {
     pub fn new(sparse_file: &'a mut File) -> Self {
-        Self { sparse_file }
+        Self {
+            sparse_file: sparse_file,
+            chunk: None,
+        }
     }
 
     pub fn read_from(&mut self, mut src: StdFile) -> Result<()> {
@@ -80,6 +84,10 @@ impl<'a> Encoder<'a> {
             }
         }
 
+        if let Some(last_chunk) = self.chunk.take() {
+            self.sparse_file.add_chunk(last_chunk);
+        }
+
         Ok(())
     }
 
@@ -88,31 +96,91 @@ impl<'a> Encoder<'a> {
             return Ok(());
         }
 
-        let chunk = Self::chunk_from_block(block, src)?;
-        self.sparse_file.add_chunk(chunk);
+        if let Some(chunk) = self.merge_block(block, src)? {
+            self.sparse_file.add_chunk(chunk);
+        }
 
         Ok(())
     }
 
-    fn chunk_from_block(block: &[u8], src: &StdFile) -> Result<Chunk> {
-        let num_blocks = 1;
-        let chunk = if is_sparse_block(block) {
+    fn merge_block(&mut self, block: &[u8], src: &StdFile) -> Result<Option<Chunk>> {
+        if is_sparse_block(block) {
             let fill = read4(block)?;
             if fill == [0; 4] {
-                Chunk::DontCare { num_blocks }
+                Ok(self.merge_don_care_block())
             } else {
-                Chunk::Fill { fill, num_blocks }
+                Ok(self.merge_fill_block(fill))
             }
         } else {
-            let mut file = src.try_clone()?;
-            let curr_off = file.seek(SeekFrom::Current(0))?;
-            Chunk::Raw {
-                file: file,
-                offset: curr_off - u64::from(BLOCK_SIZE),
-                num_blocks: num_blocks,
+            self.merge_raw_block(src)
+        }
+    }
+
+    fn merge_raw_block(&mut self, src: &StdFile) -> Result<Option<Chunk>> {
+        let (old, new) = match self.chunk.take() {
+            Some(Chunk::Raw {
+                file,
+                offset,
+                num_blocks,
+            }) => (
+                None,
+                Chunk::Raw {
+                    file: file,
+                    offset: offset,
+                    num_blocks: num_blocks + 1,
+                },
+            ),
+            old_chunk => {
+                let mut file = src.try_clone()?;
+                let curr_off = file.seek(SeekFrom::Current(0))?;
+                (
+                    old_chunk,
+                    Chunk::Raw {
+                        file: file,
+                        offset: curr_off - u64::from(BLOCK_SIZE),
+                        num_blocks: 1,
+                    },
+                )
             }
         };
-        Ok(chunk)
+        self.chunk = Some(new);
+        Ok(old)
+    }
+
+    fn merge_fill_block(&mut self, fill: [u8; 4]) -> Option<Chunk> {
+        let new_fill = fill;
+        let (old, new) = match self.chunk.take() {
+            Some(Chunk::Fill { fill, num_blocks }) if fill == new_fill => (
+                None,
+                Chunk::Fill {
+                    fill: fill,
+                    num_blocks: num_blocks + 1,
+                },
+            ),
+            old_chunk => (
+                old_chunk,
+                Chunk::Fill {
+                    fill: new_fill,
+                    num_blocks: 1,
+                },
+            ),
+        };
+        self.chunk = Some(new);
+        old
+    }
+
+    fn merge_don_care_block(&mut self) -> Option<Chunk> {
+        let (old, new) = match self.chunk.take() {
+            Some(Chunk::DontCare { num_blocks }) => (
+                None,
+                Chunk::DontCare {
+                    num_blocks: num_blocks + 1,
+                },
+            ),
+            old_chunk => (old_chunk, Chunk::DontCare { num_blocks: 1 }),
+        };
+        self.chunk = Some(new);
+        old
     }
 }
 
