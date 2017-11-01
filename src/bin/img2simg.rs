@@ -32,8 +32,8 @@ fn img2simg(args: &Args) -> Result<()> {
     let writer = BufWriter::new(fo);
 
     let mut sparse_file = sparse::File::new();
-    sparse::Encoder::new(&mut sparse_file).read_from(fi)?;
-    sparse::Writer::new(&mut sparse_file).write_to(writer)?;
+    sparse::Encoder::new(&mut sparse_file, fi).read()?;
+    sparse::Writer::new(&mut sparse_file, writer).write()?;
 
     Ok(())
 }

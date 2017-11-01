@@ -11,47 +11,48 @@ use result::Result;
 #[derive(Debug)]
 pub struct Reader<'a> {
     sparse_file: &'a mut File,
+    src: StdFile,
 }
 
 impl<'a> Reader<'a> {
-    pub fn new(sparse_file: &'a mut File) -> Self {
-        Self { sparse_file }
+    pub fn new(sparse_file: &'a mut File, src: StdFile) -> Self {
+        Self { sparse_file, src }
     }
 
-    pub fn read_from(&mut self, mut src: StdFile) -> Result<()> {
-        let header = FileHeader::deserialize(&mut src)?;
+    pub fn read(mut self) -> Result<()> {
+        let header = FileHeader::deserialize(&mut self.src)?;
         for _ in 0..header.total_chunks {
-            self.read_chunk(&mut src)?;
+            self.read_chunk()?;
         }
 
         Ok(())
     }
 
-    fn read_chunk(&mut self, mut src: &mut StdFile) -> Result<()> {
-        let header = ChunkHeader::deserialize(&mut src)?;
+    fn read_chunk(&mut self) -> Result<()> {
+        let header = ChunkHeader::deserialize(&mut self.src)?;
         let num_blocks = header.chunk_size;
 
         let chunk = match header.chunk_type {
             ChunkType::Raw => {
-                let off = src.seek(SeekFrom::Current(0))?;
+                let off = self.src.seek(SeekFrom::Current(0))?;
                 let size = i64::from(num_blocks * BLOCK_SIZE);
-                src.seek(SeekFrom::Current(size))?;
+                self.src.seek(SeekFrom::Current(size))?;
                 Chunk::Raw {
-                    file: src.try_clone()?,
+                    file: self.src.try_clone()?,
                     offset: off,
                     num_blocks: num_blocks,
                 }
             }
 
             ChunkType::Fill => {
-                let fill = read4(&mut src)?;
+                let fill = read4(&mut self.src)?;
                 Chunk::Fill { fill, num_blocks }
             }
 
             ChunkType::DontCare => Chunk::DontCare { num_blocks },
 
             ChunkType::Crc32 => Chunk::Crc32 {
-                crc: src.read_u32::<LittleEndian>()?,
+                crc: self.src.read_u32::<LittleEndian>()?,
             },
         };
         self.sparse_file.add_chunk(chunk);
@@ -62,23 +63,25 @@ impl<'a> Reader<'a> {
 #[derive(Debug)]
 pub struct Encoder<'a> {
     sparse_file: &'a mut File,
+    src: StdFile,
     chunk: Option<Chunk>,
 }
 
 impl<'a> Encoder<'a> {
-    pub fn new(sparse_file: &'a mut File) -> Self {
+    pub fn new(sparse_file: &'a mut File, src: StdFile) -> Self {
         Self {
             sparse_file: sparse_file,
+            src: src,
             chunk: None,
         }
     }
 
-    pub fn read_from(&mut self, mut src: StdFile) -> Result<()> {
+    pub fn read(mut self) -> Result<()> {
         let block_size = BLOCK_SIZE as usize;
         let mut block = vec![0; block_size];
         loop {
-            let bytes_read = read_all(&mut src, &mut block)?;
-            self.read_block(&block[..bytes_read], &mut src)?;
+            let bytes_read = read_all(&mut self.src, &mut block)?;
+            self.read_block(&block[..bytes_read])?;
             if bytes_read != block_size {
                 break;
             }
@@ -91,19 +94,19 @@ impl<'a> Encoder<'a> {
         Ok(())
     }
 
-    fn read_block(&mut self, block: &[u8], src: &mut StdFile) -> Result<()> {
+    fn read_block(&mut self, block: &[u8]) -> Result<()> {
         if block.is_empty() {
             return Ok(());
         }
 
-        if let Some(chunk) = self.merge_block(block, src)? {
+        if let Some(chunk) = self.merge_block(block)? {
             self.sparse_file.add_chunk(chunk);
         }
 
         Ok(())
     }
 
-    fn merge_block(&mut self, block: &[u8], src: &StdFile) -> Result<Option<Chunk>> {
+    fn merge_block(&mut self, block: &[u8]) -> Result<Option<Chunk>> {
         if is_sparse_block(block) {
             let fill = read4(block)?;
             if fill == [0; 4] {
@@ -112,11 +115,11 @@ impl<'a> Encoder<'a> {
                 Ok(self.merge_fill_block(fill))
             }
         } else {
-            self.merge_raw_block(src)
+            self.merge_raw_block()
         }
     }
 
-    fn merge_raw_block(&mut self, src: &StdFile) -> Result<Option<Chunk>> {
+    fn merge_raw_block(&mut self) -> Result<Option<Chunk>> {
         let (old, new) = match self.chunk.take() {
             Some(Chunk::Raw {
                 file,
@@ -131,7 +134,7 @@ impl<'a> Encoder<'a> {
                 },
             ),
             old_chunk => {
-                let mut file = src.try_clone()?;
+                let mut file = self.src.try_clone()?;
                 let curr_off = file.seek(SeekFrom::Current(0))?;
                 (
                     old_chunk,
