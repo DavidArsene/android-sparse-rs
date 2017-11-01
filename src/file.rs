@@ -25,7 +25,7 @@ impl File {
     pub fn num_blocks(&self) -> u32 {
         self.chunks
             .iter()
-            .fold(0, |sum, chunk| sum + chunk.raw_size() / BLOCK_SIZE)
+            .fold(0, |sum, chunk| sum + chunk.num_blocks())
     }
 
     pub fn num_chunks(&self) -> u32 {
@@ -57,20 +57,20 @@ pub enum Chunk {
 }
 
 impl Chunk {
-    pub fn size(&self) -> u32 {
+    pub fn sparse_size(&self) -> u32 {
         let body_size = match *self {
-            Chunk::Raw { .. } => self.raw_size(),
+            Chunk::Raw { num_blocks, .. } => num_blocks * BLOCK_SIZE,
             Chunk::Fill { .. } | Chunk::Crc32 { .. } => 4,
             Chunk::DontCare { .. } => 0,
         };
         u32::from(CHUNK_HEADER_SIZE) + body_size
     }
 
-    pub fn raw_size(&self) -> u32 {
+    pub fn num_blocks(&self) -> u32 {
         match *self {
             Chunk::Raw { num_blocks, .. } |
             Chunk::Fill { num_blocks, .. } |
-            Chunk::DontCare { num_blocks } => num_blocks * BLOCK_SIZE,
+            Chunk::DontCare { num_blocks } => num_blocks,
             Chunk::Crc32 { .. } => 0,
         }
     }
