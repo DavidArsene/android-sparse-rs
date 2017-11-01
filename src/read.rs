@@ -34,8 +34,7 @@ impl Reader {
             self.read_chunk(&mut sparse_file)?;
         }
 
-        self.check_crc(header.image_checksum)
-            .map_err(|_| "Image checksum does not match".into())
+        Ok(())
     }
 
     fn read_chunk(&mut self, mut spf: &mut File) -> Result<()> {
@@ -104,7 +103,6 @@ impl Reader {
     fn read_crc32_chunk(&mut self) -> Result<()> {
         let crc = self.src.read_u32::<LittleEndian>()?;
         self.check_crc(crc)
-            .map_err(|_| "Chunk checksum does not match".into())
     }
 
     fn check_crc(&self, crc: u32) -> Result<()> {
