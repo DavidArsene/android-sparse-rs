@@ -2,6 +2,8 @@ use std::fs::File as StdFile;
 use std::io::{ErrorKind, Read, Seek, SeekFrom};
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use crc::crc32;
+use crc::crc32::Hasher32;
 
 use file::{Chunk, File};
 use headers::{ChunkHeader, ChunkType, FileHeader};
@@ -11,11 +13,21 @@ use result::Result;
 pub struct Reader<'a> {
     sparse_file: &'a mut File,
     src: StdFile,
+    crc: Option<crc32::Digest>,
 }
 
 impl<'a> Reader<'a> {
     pub fn new(sparse_file: &'a mut File, src: StdFile) -> Self {
-        Self { sparse_file, src }
+        Self {
+            sparse_file: sparse_file,
+            src: src,
+            crc: None,
+        }
+    }
+
+    pub fn with_crc(mut self) -> Self {
+        self.crc = Some(crc32::Digest::new(crc32::IEEE));
+        self
     }
 
     pub fn read(mut self) -> Result<()> {
@@ -24,37 +36,88 @@ impl<'a> Reader<'a> {
             self.read_chunk()?;
         }
 
-        Ok(())
+        self.check_crc(header.image_checksum)
+            .map_err(|_| "Image checksum does not match".into())
     }
 
     fn read_chunk(&mut self) -> Result<()> {
         let header = ChunkHeader::deserialize(&mut self.src)?;
         let num_blocks = header.chunk_size;
 
-        let chunk = match header.chunk_type {
-            ChunkType::Raw => {
-                let off = self.src.seek(SeekFrom::Current(0))?;
-                let size = i64::from(num_blocks * BLOCK_SIZE);
-                self.src.seek(SeekFrom::Current(size))?;
-                Chunk::Raw {
-                    file: self.src.try_clone()?,
-                    offset: off,
-                    num_blocks: num_blocks,
-                }
+        match header.chunk_type {
+            ChunkType::Raw => self.read_raw_chunk(num_blocks),
+            ChunkType::Fill => self.read_fill_chunk(num_blocks),
+            ChunkType::DontCare => {
+                self.read_dont_care_chunk(num_blocks);
+                Ok(())
             }
+            ChunkType::Crc32 => self.read_crc32_chunk(),
+        }
+    }
 
-            ChunkType::Fill => {
-                let fill = read4(&mut self.src)?;
-                Chunk::Fill { fill, num_blocks }
+    fn read_raw_chunk(&mut self, num_blocks: u32) -> Result<()> {
+        let off = self.src.seek(SeekFrom::Current(0))?;
+
+        if let Some(ref mut digest) = self.crc {
+            let mut block = [0; BLOCK_SIZE as usize];
+            for _ in 0..num_blocks {
+                self.src.read_exact(&mut block)?;
+                digest.write(&block);
             }
+        } else {
+            let size = i64::from(num_blocks * BLOCK_SIZE);
+            self.src.seek(SeekFrom::Current(size))?;
+        }
 
-            ChunkType::DontCare => Chunk::DontCare { num_blocks },
-
-            ChunkType::Crc32 => Chunk::Crc32 {
-                crc: self.src.read_u32::<LittleEndian>()?,
-            },
+        let chunk = Chunk::Raw {
+            file: self.src.try_clone()?,
+            offset: off,
+            num_blocks: num_blocks,
         };
         self.sparse_file.add_chunk(chunk);
+
+        Ok(())
+    }
+
+    fn read_fill_chunk(&mut self, num_blocks: u32) -> Result<()> {
+        let fill = read4(&mut self.src)?;
+
+        if let Some(ref mut digest) = self.crc {
+            for _ in 0..(num_blocks * BLOCK_SIZE / 4) {
+                digest.write(&fill);
+            }
+        }
+
+        let chunk = Chunk::Fill { fill, num_blocks };
+        self.sparse_file.add_chunk(chunk);
+
+        Ok(())
+    }
+
+    fn read_dont_care_chunk(&mut self, num_blocks: u32) {
+        if let Some(ref mut digest) = self.crc {
+            let block = [0; BLOCK_SIZE as usize];
+            for _ in 0..num_blocks {
+                digest.write(&block);
+            }
+        }
+
+        let chunk = Chunk::DontCare { num_blocks };
+        self.sparse_file.add_chunk(chunk);
+    }
+
+    fn read_crc32_chunk(&mut self) -> Result<()> {
+        let crc = self.src.read_u32::<LittleEndian>()?;
+        self.check_crc(crc)
+            .map_err(|_| "Chunk checksum does not match".into())
+    }
+
+    fn check_crc(&self, crc: u32) -> Result<()> {
+        if let Some(ref digest) = self.crc {
+            if digest.sum32() != crc {
+                return Err("Checksum does not match".into());
+            }
+        }
         Ok(())
     }
 }

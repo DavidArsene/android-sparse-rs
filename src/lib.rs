@@ -1,4 +1,5 @@
 extern crate byteorder;
+extern crate crc;
 
 pub mod file;
 pub mod result;
