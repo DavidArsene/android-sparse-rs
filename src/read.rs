@@ -8,7 +8,6 @@ use headers::{ChunkHeader, ChunkType, FileHeader};
 use headers::BLOCK_SIZE;
 use result::Result;
 
-#[derive(Debug)]
 pub struct Reader<'a> {
     sparse_file: &'a mut File,
     src: StdFile,
@@ -60,7 +59,6 @@ impl<'a> Reader<'a> {
     }
 }
 
-#[derive(Debug)]
 pub struct Encoder<'a> {
     sparse_file: &'a mut File,
     src: StdFile,

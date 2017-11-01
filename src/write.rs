@@ -12,7 +12,6 @@ use result::Result;
 
 const COPY_BUF_SIZE: usize = 4096;
 
-#[derive(Debug)]
 pub struct Writer<'a, W> {
     sparse_file: &'a mut File,
     // Use RefCell here, so we can iterate over the sparse_file chunks
@@ -75,7 +74,6 @@ impl<'a, W: Write> Writer<'a, W> {
     }
 }
 
-#[derive(Debug)]
 pub struct Decoder<'a, W> {
     sparse_file: &'a mut File,
     // Use RefCell here, so we can iterate over the sparse_file chunks
