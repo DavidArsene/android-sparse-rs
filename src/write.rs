@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::cmp;
 use std::fs::File as StdFile;
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
@@ -12,97 +11,82 @@ use result::Result;
 
 const COPY_BUF_SIZE: usize = 4096;
 
-pub struct Writer<'a, W> {
-    sparse_file: &'a mut File,
-    // Use RefCell here, so we can iterate over the sparse_file chunks
-    // while writing to dst.
-    dst: RefCell<W>,
+pub struct Writer<W> {
+    dst: W,
 }
 
-impl<'a, W: Write> Writer<'a, W> {
-    pub fn new(sparse_file: &'a mut File, dst: W) -> Self {
-        Self {
-            sparse_file: sparse_file,
-            dst: RefCell::new(dst),
-        }
+impl<W: Write> Writer<W> {
+    pub fn new(dst: W) -> Self {
+        Self { dst }
     }
 
-    pub fn write(self) -> Result<()> {
-        self.write_file_header()?;
+    pub fn write(mut self, sparse_file: &File) -> Result<()> {
+        self.write_file_header(sparse_file)?;
 
-        let chunks = { self.sparse_file.chunk_iter().collect::<Vec<_>>() };
-        for chunk in chunks {
+        for chunk in sparse_file.chunk_iter() {
             self.write_chunk(chunk)?;
         }
 
         Ok(())
     }
 
-    fn write_file_header(&self) -> Result<()> {
+    fn write_file_header(&mut self, spf: &File) -> Result<()> {
         let header = FileHeader {
-            total_blocks: self.sparse_file.num_blocks(),
-            total_chunks: self.sparse_file.num_chunks(),
-            image_checksum: self.sparse_file.checksum(),
+            total_blocks: spf.num_blocks(),
+            total_chunks: spf.num_chunks(),
+            image_checksum: spf.checksum(),
         };
-        header.serialize(&mut *self.dst.borrow_mut())
+        header.serialize(&mut self.dst)
     }
 
-    fn write_chunk(&self, chunk: &Chunk) -> Result<()> {
+    fn write_chunk(&mut self, chunk: &Chunk) -> Result<()> {
         self.write_chunk_header(chunk)?;
 
-        let dst = &mut *self.dst.borrow_mut();
         match *chunk {
             Chunk::Raw {
                 ref file, offset, ..
-            } => copy_from_file(file, dst, offset, chunk.raw_size() as usize)?,
+            } => copy_from_file(file, &mut self.dst, offset, chunk.raw_size() as usize)?,
 
-            Chunk::Fill { ref fill, .. } => dst.write_all(fill)?,
+            Chunk::Fill { ref fill, .. } => self.dst.write_all(fill)?,
             Chunk::DontCare { .. } => {}
-            Chunk::Crc32 { crc } => dst.write_u32::<LittleEndian>(crc)?,
+            Chunk::Crc32 { crc } => self.dst.write_u32::<LittleEndian>(crc)?,
         }
 
         Ok(())
     }
 
-    fn write_chunk_header(&self, chunk: &Chunk) -> Result<()> {
+    fn write_chunk_header(&mut self, chunk: &Chunk) -> Result<()> {
         let header = ChunkHeader {
             chunk_type: chunk.chunk_type(),
             chunk_size: chunk.raw_size() / BLOCK_SIZE,
             total_size: chunk.size(),
         };
-        header.serialize(&mut *self.dst.borrow_mut())
+        header.serialize(&mut self.dst)
     }
 }
 
-pub struct Decoder<'a, W> {
-    sparse_file: &'a mut File,
-    // Use RefCell here, so we can iterate over the sparse_file chunks
-    // while writing to dst.
-    dst: RefCell<W>,
+pub struct Decoder<W> {
+    dst: W,
 }
 
-impl<'a, W: Write> Decoder<'a, W> {
-    pub fn new(sparse_file: &'a mut File, dst: W) -> Self {
-        Self {
-            sparse_file: sparse_file,
-            dst: RefCell::new(dst),
-        }
+impl<W: Write> Decoder<W> {
+    pub fn new(dst: W) -> Self {
+        Self { dst }
     }
 
-    pub fn write(self) -> Result<()> {
-        for chunk in self.sparse_file.chunk_iter() {
+    pub fn write(mut self, sparse_file: &File) -> Result<()> {
+        for chunk in sparse_file.chunk_iter() {
             self.write_chunk(chunk)?;
         }
 
         Ok(())
     }
 
-    fn write_chunk(&self, chunk: &Chunk) -> Result<()> {
-        let dst = &mut *self.dst.borrow_mut();
+    fn write_chunk(&mut self, chunk: &Chunk) -> Result<()> {
         match *chunk {
             Chunk::Raw {
                 ref file, offset, ..
-            } => copy_from_file(file, dst, offset, chunk.raw_size() as usize)?,
+            } => copy_from_file(file, &mut self.dst, offset, chunk.raw_size() as usize)?,
 
             Chunk::Fill { fill, num_blocks } => {
                 let block = fill.iter()
@@ -111,14 +95,14 @@ impl<'a, W: Write> Decoder<'a, W> {
                     .take(BLOCK_SIZE as usize)
                     .collect::<Vec<_>>();
                 for _ in 0..num_blocks {
-                    dst.write_all(&block)?;
+                    self.dst.write_all(&block)?;
                 }
             }
 
             Chunk::DontCare { num_blocks } => {
                 let block = [0; BLOCK_SIZE as usize];
                 for _ in 0..num_blocks {
-                    dst.write_all(&block)?;
+                    self.dst.write_all(&block)?;
                 }
             }
 

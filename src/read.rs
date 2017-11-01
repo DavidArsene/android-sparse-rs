@@ -10,16 +10,14 @@ use headers::{ChunkHeader, ChunkType, FileHeader};
 use headers::BLOCK_SIZE;
 use result::Result;
 
-pub struct Reader<'a> {
-    sparse_file: &'a mut File,
+pub struct Reader {
     src: StdFile,
     crc: Option<crc32::Digest>,
 }
 
-impl<'a> Reader<'a> {
-    pub fn new(sparse_file: &'a mut File, src: StdFile) -> Self {
+impl Reader {
+    pub fn new(src: StdFile) -> Self {
         Self {
-            sparse_file: sparse_file,
             src: src,
             crc: None,
         }
@@ -30,32 +28,29 @@ impl<'a> Reader<'a> {
         self
     }
 
-    pub fn read(mut self) -> Result<()> {
+    pub fn read(mut self, mut sparse_file: &mut File) -> Result<()> {
         let header = FileHeader::deserialize(&mut self.src)?;
         for _ in 0..header.total_chunks {
-            self.read_chunk()?;
+            self.read_chunk(&mut sparse_file)?;
         }
 
         self.check_crc(header.image_checksum)
             .map_err(|_| "Image checksum does not match".into())
     }
 
-    fn read_chunk(&mut self) -> Result<()> {
+    fn read_chunk(&mut self, mut spf: &mut File) -> Result<()> {
         let header = ChunkHeader::deserialize(&mut self.src)?;
         let num_blocks = header.chunk_size;
 
         match header.chunk_type {
-            ChunkType::Raw => self.read_raw_chunk(num_blocks),
-            ChunkType::Fill => self.read_fill_chunk(num_blocks),
-            ChunkType::DontCare => {
-                self.read_dont_care_chunk(num_blocks);
-                Ok(())
-            }
+            ChunkType::Raw => self.read_raw_chunk(&mut spf, num_blocks),
+            ChunkType::Fill => self.read_fill_chunk(&mut spf, num_blocks),
+            ChunkType::DontCare => Ok(self.read_dont_care_chunk(&mut spf, num_blocks)),
             ChunkType::Crc32 => self.read_crc32_chunk(),
         }
     }
 
-    fn read_raw_chunk(&mut self, num_blocks: u32) -> Result<()> {
+    fn read_raw_chunk(&mut self, spf: &mut File, num_blocks: u32) -> Result<()> {
         let off = self.src.seek(SeekFrom::Current(0))?;
 
         if let Some(ref mut digest) = self.crc {
@@ -74,12 +69,12 @@ impl<'a> Reader<'a> {
             offset: off,
             num_blocks: num_blocks,
         };
-        self.sparse_file.add_chunk(chunk);
+        spf.add_chunk(chunk);
 
         Ok(())
     }
 
-    fn read_fill_chunk(&mut self, num_blocks: u32) -> Result<()> {
+    fn read_fill_chunk(&mut self, spf: &mut File, num_blocks: u32) -> Result<()> {
         let fill = read4(&mut self.src)?;
 
         if let Some(ref mut digest) = self.crc {
@@ -89,12 +84,12 @@ impl<'a> Reader<'a> {
         }
 
         let chunk = Chunk::Fill { fill, num_blocks };
-        self.sparse_file.add_chunk(chunk);
+        spf.add_chunk(chunk);
 
         Ok(())
     }
 
-    fn read_dont_care_chunk(&mut self, num_blocks: u32) {
+    fn read_dont_care_chunk(&mut self, spf: &mut File, num_blocks: u32) {
         if let Some(ref mut digest) = self.crc {
             let block = [0; BLOCK_SIZE as usize];
             for _ in 0..num_blocks {
@@ -103,7 +98,7 @@ impl<'a> Reader<'a> {
         }
 
         let chunk = Chunk::DontCare { num_blocks };
-        self.sparse_file.add_chunk(chunk);
+        spf.add_chunk(chunk);
     }
 
     fn read_crc32_chunk(&mut self) -> Result<()> {
@@ -122,46 +117,44 @@ impl<'a> Reader<'a> {
     }
 }
 
-pub struct Encoder<'a> {
-    sparse_file: &'a mut File,
+pub struct Encoder {
     src: StdFile,
     chunk: Option<Chunk>,
 }
 
-impl<'a> Encoder<'a> {
-    pub fn new(sparse_file: &'a mut File, src: StdFile) -> Self {
+impl Encoder {
+    pub fn new(src: StdFile) -> Self {
         Self {
-            sparse_file: sparse_file,
             src: src,
             chunk: None,
         }
     }
 
-    pub fn read(mut self) -> Result<()> {
+    pub fn read(mut self, mut sparse_file: &mut File) -> Result<()> {
         let block_size = BLOCK_SIZE as usize;
         let mut block = vec![0; block_size];
         loop {
             let bytes_read = read_all(&mut self.src, &mut block)?;
-            self.read_block(&block[..bytes_read])?;
+            self.read_block(&mut sparse_file, &block[..bytes_read])?;
             if bytes_read != block_size {
                 break;
             }
         }
 
         if let Some(last_chunk) = self.chunk.take() {
-            self.sparse_file.add_chunk(last_chunk);
+            sparse_file.add_chunk(last_chunk);
         }
 
         Ok(())
     }
 
-    fn read_block(&mut self, block: &[u8]) -> Result<()> {
+    fn read_block(&mut self, spf: &mut File, block: &[u8]) -> Result<()> {
         if block.is_empty() {
             return Ok(());
         }
 
         if let Some(chunk) = self.merge_block(block)? {
-            self.sparse_file.add_chunk(chunk);
+            spf.add_chunk(chunk);
         }
 
         Ok(())
