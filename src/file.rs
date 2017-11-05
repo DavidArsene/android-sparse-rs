@@ -66,6 +66,10 @@ impl Chunk {
         u32::from(CHUNK_HEADER_SIZE) + body_size
     }
 
+    pub fn raw_size(&self) -> u32 {
+        self.num_blocks() * BLOCK_SIZE
+    }
+
     pub fn num_blocks(&self) -> u32 {
         match *self {
             Chunk::Raw { num_blocks, .. } |
