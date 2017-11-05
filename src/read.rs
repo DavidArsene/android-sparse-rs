@@ -45,7 +45,7 @@ impl Reader {
             ChunkType::Raw => self.read_raw_chunk(&mut spf, num_blocks),
             ChunkType::Fill => self.read_fill_chunk(&mut spf, num_blocks),
             ChunkType::DontCare => Ok(self.read_dont_care_chunk(&mut spf, num_blocks)),
-            ChunkType::Crc32 => self.read_crc32_chunk(),
+            ChunkType::Crc32 => self.read_crc32_chunk(&mut spf),
         }
     }
 
@@ -100,9 +100,14 @@ impl Reader {
         spf.add_chunk(chunk);
     }
 
-    fn read_crc32_chunk(&mut self) -> Result<()> {
+    fn read_crc32_chunk(&mut self, spf: &mut File) -> Result<()> {
         let crc = self.src.read_u32::<LittleEndian>()?;
-        self.check_crc(crc)
+        self.check_crc(crc)?;
+
+        let chunk = Chunk::Crc32 { crc };
+        spf.add_chunk(chunk);
+
+        Ok(())
     }
 
     fn check_crc(&self, crc: u32) -> Result<()> {
