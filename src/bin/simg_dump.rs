@@ -1,31 +1,25 @@
 extern crate android_sparse as sparse;
+#[macro_use]
+extern crate clap;
 
-use std::env;
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
+
+use clap::{App, Arg, ArgMatches};
 
 use sparse::constants::{BLOCK_SIZE, CHUNK_HEADER_SIZE, FILE_HEADER_SIZE};
 use sparse::result::Result;
 
-struct Args {
-    src: String,
+fn parse_args<'a>() -> ArgMatches<'a> {
+    App::new("simg_dump")
+        .about("Display sparse file info")
+        .version(crate_version!())
+        .arg(Arg::with_name("sparse_file").required(true))
+        .get_matches()
 }
 
-impl Args {
-    fn parse() -> Result<Self> {
-        let args = env::args().skip(1).collect::<Vec<String>>();
-        if args.len() != 1 {
-            println!("usage: simg_dump <sparse_image_file>");
-            return Err("Invalid number of arguments".into());
-        }
-        Ok(Self {
-            src: args[0].clone(),
-        })
-    }
-}
-
-fn simg_dump(args: &Args) -> Result<()> {
-    let mut fi = File::open(&args.src)?;
+fn simg_dump(args: &ArgMatches) -> Result<()> {
+    let mut fi = File::open(&args.value_of("sparse_file").unwrap())?;
 
     let mut sparse_file = sparse::File::new();
     sparse::Reader::new(fi.try_clone()?).read(&mut sparse_file)?;
@@ -112,7 +106,6 @@ fn chunk_type_str(chunk: &sparse::file::Chunk) -> String {
 }
 
 fn main() {
-    Args::parse()
-        .and_then(|args| simg_dump(&args))
-        .unwrap_or_else(|err| eprintln!("error: {}", err));
+    let args = parse_args();
+    simg_dump(&args).unwrap_or_else(|err| eprintln!("error: {}", err));
 }

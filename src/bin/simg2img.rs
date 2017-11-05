@@ -1,33 +1,27 @@
 extern crate android_sparse as sparse;
+#[macro_use]
+extern crate clap;
 
-use std::env;
 use std::fs::File;
 use std::io::BufWriter;
 
+use clap::{App, Arg, ArgMatches};
+
 use sparse::result::Result;
 
-struct Args {
-    src: String,
-    dst: String,
+fn parse_args<'a>() -> ArgMatches<'a> {
+    App::new("simg2img")
+        .about("Decode a sparse file to a raw file")
+        .version(crate_version!())
+        .author("Jan Teske <jan.teske@gmail.com>")
+        .arg(Arg::with_name("sparse_file").required(true))
+        .arg(Arg::with_name("raw_file").required(true))
+        .get_matches()
 }
 
-impl Args {
-    fn parse() -> Result<Self> {
-        let args = env::args().skip(1).collect::<Vec<String>>();
-        if args.len() != 2 {
-            println!("usage: simg2img <sparse_image_file> <raw_image_file>");
-            return Err("Invalid number of arguments".into());
-        }
-        Ok(Self {
-            src: args[0].clone(),
-            dst: args[1].clone(),
-        })
-    }
-}
-
-fn simg2img(args: &Args) -> Result<()> {
-    let fi = File::open(&args.src)?;
-    let fo = File::create(&args.dst)?;
+fn simg2img(args: &ArgMatches) -> Result<()> {
+    let fi = File::open(&args.value_of("sparse_file").unwrap())?;
+    let fo = File::create(&args.value_of("raw_file").unwrap())?;
 
     let writer = BufWriter::new(fo);
 
@@ -39,7 +33,6 @@ fn simg2img(args: &Args) -> Result<()> {
 }
 
 fn main() {
-    Args::parse()
-        .and_then(|args| simg2img(&args))
-        .unwrap_or_else(|err| eprintln!("error: {}", err));
+    let args = parse_args();
+    simg2img(&args).unwrap_or_else(|err| eprintln!("error: {}", err));
 }
