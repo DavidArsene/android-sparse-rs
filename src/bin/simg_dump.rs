@@ -10,11 +10,24 @@ use clap::{App, Arg, ArgMatches};
 use sparse::constants::{BLOCK_SIZE, CHUNK_HEADER_SIZE, FILE_HEADER_SIZE};
 use sparse::result::Result;
 
+#[derive(PartialEq)]
+enum Verbosity {
+    Normal,
+    Verbose,
+}
+
 fn parse_args<'a>() -> ArgMatches<'a> {
     App::new("simg_dump")
         .about("Display sparse file info")
         .version(crate_version!())
+        .author("Jan Teske <jan.teske@gmail.com>")
         .arg(Arg::with_name("sparse_file").required(true))
+        .arg(
+            Arg::with_name("verbose")
+                .help("Verbose output")
+                .short("v")
+                .long("verbose"),
+        )
         .get_matches()
 }
 
@@ -24,7 +37,11 @@ fn simg_dump(args: &ArgMatches) -> Result<()> {
     let mut sparse_file = sparse::File::new();
     sparse::Reader::new(fi.try_clone()?).read(&mut sparse_file)?;
 
-    dump(&sparse_file);
+    let verbosity = match args.is_present("verbose") {
+        true => Verbosity::Verbose,
+        false => Verbosity::Normal,
+    };
+    dump(&sparse_file, verbosity);
 
     let spf_end = fi.seek(SeekFrom::Current(0))?;
     let file_end = fi.seek(SeekFrom::End(0))?;
@@ -38,9 +55,11 @@ fn simg_dump(args: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-fn dump(spf: &sparse::File) {
+fn dump(spf: &sparse::File, verbosity: Verbosity) {
     dump_summary(spf);
-    dump_chunks(spf);
+    if verbosity == Verbosity::Verbose {
+        dump_chunks(spf);
+    }
 }
 
 
