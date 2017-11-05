@@ -3,12 +3,9 @@ use std::io::{Read, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
+use constants::{BLOCK_SIZE, CHUNK_HEADER_SIZE, FILE_HEADER_SIZE};
 use convert::{TryFrom, TryInto};
 use result::Result;
-
-pub const FILE_HEADER_SIZE: u16 = 28;
-pub const CHUNK_HEADER_SIZE: u16 = 12;
-pub const BLOCK_SIZE: u32 = 4096;
 
 const FILE_MAGIC: u32 = 0xed26_ff3a;
 const FILE_FORMAT_VERSION: (u16, u16) = (1, 0);

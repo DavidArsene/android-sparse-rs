@@ -1,9 +1,9 @@
 use std::fs::File as StdFile;
 use std::slice::Iter;
 
+use constants::{BLOCK_SIZE, CHUNK_HEADER_SIZE};
 use convert::TryInto;
 use headers::ChunkType;
-use headers::{BLOCK_SIZE, CHUNK_HEADER_SIZE};
 
 pub type ChunkIter<'a> = Iter<'a, Chunk>;
 

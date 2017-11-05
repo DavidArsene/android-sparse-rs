@@ -5,9 +5,9 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use crc::crc32;
 use crc::crc32::Hasher32;
 
+use constants::BLOCK_SIZE;
 use file::{Chunk, File};
 use headers::{ChunkHeader, FileHeader};
-use headers::BLOCK_SIZE;
 use result::Result;
 
 pub struct Writer<W> {
