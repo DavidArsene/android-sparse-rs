@@ -250,7 +250,7 @@ fn is_sparse_block(block: &[u8]) -> bool {
     }
 
     let mut words = block.chunks(4);
-    let first = words.next().expect("block is empty");
+    let first = words.next().unwrap();
     for word in words {
         if word != first {
             return false;
