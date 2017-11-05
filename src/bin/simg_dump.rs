@@ -2,6 +2,7 @@ extern crate android_sparse as sparse;
 
 use std::env;
 use std::fs::File;
+use std::io::{Seek, SeekFrom};
 
 use sparse::constants::{BLOCK_SIZE, CHUNK_HEADER_SIZE, FILE_HEADER_SIZE};
 use sparse::result::Result;
@@ -24,12 +25,21 @@ impl Args {
 }
 
 fn simg_dump(args: &Args) -> Result<()> {
-    let fi = File::open(&args.src)?;
+    let mut fi = File::open(&args.src)?;
 
     let mut sparse_file = sparse::File::new();
-    sparse::Reader::new(fi).read(&mut sparse_file)?;
+    sparse::Reader::new(fi.try_clone()?).read(&mut sparse_file)?;
 
     dump(&sparse_file);
+
+    let spf_end = fi.seek(SeekFrom::Current(0))?;
+    let file_end = fi.seek(SeekFrom::End(0))?;
+    if spf_end != file_end {
+        println!(
+            "There are {} bytes of extra data at the end of the file.",
+            file_end - spf_end
+        );
+    }
 
     Ok(())
 }
@@ -80,6 +90,8 @@ fn dump_chunks(spf: &sparse::File) {
         bytes_off += u64::from(sparse_size) + u64::from(CHUNK_HEADER_SIZE);
         blocks_off += u64::from(num_blocks);
     }
+
+    println!("");
 }
 
 fn chunk_type_str(chunk: &sparse::file::Chunk) -> String {
