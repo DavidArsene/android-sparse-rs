@@ -16,6 +16,12 @@ fn parse_args<'a>() -> ArgMatches<'a> {
         .author("Jan Teske <jan.teske@gmail.com>")
         .arg(Arg::with_name("raw_file").required(true))
         .arg(Arg::with_name("sparse_file").required(true))
+        .arg(
+            Arg::with_name("crc")
+                .help("Compute the sparse image checksum")
+                .short("c")
+                .long("crc"),
+        )
         .get_matches()
 }
 
@@ -26,8 +32,15 @@ fn img2simg(args: &ArgMatches) -> Result<()> {
     let writer = BufWriter::new(fo);
 
     let mut sparse_file = sparse::File::new();
-    sparse::Encoder::new(fi).read(&mut sparse_file)?;
-    sparse::Writer::new(writer).with_crc().write(&sparse_file)?;
+    let encoder = sparse::Encoder::new(fi);
+
+    let mut writer = sparse::Writer::new(writer);
+    if args.is_present("crc") {
+        writer = writer.with_crc();
+    }
+
+    encoder.read(&mut sparse_file)?;
+    writer.write(&sparse_file)?;
 
     Ok(())
 }
