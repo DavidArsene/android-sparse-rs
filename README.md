@@ -46,17 +46,37 @@ installed Rust via `rustup`, this directory is located at:
 
 ## Usage
 
+### Encoding
+
 Encoding a raw file to a sparse file:
 
     $ img2simg <raw_file> <sparse_file>
+
+The `-c`/`--crc` flag makes `img2simg` write an image checksum to the sparse file:
+
+    $ img2simg --crc <raw_file> <sparse_file>
+
+### Decoding
 
 Decoding a sparse file to a raw file:
 
     $ simg2img <sparse_file> <raw_file>
 
+The `-c`/`--crc` flag makes `simg2img` check the checksums included in the sparse
+file. Decoding is aborted if they don't match.
+
+    $ simg2img --crc <sparse_file> <raw_file>
+
+### Inspection
+
 Displaying sparse file info:
 
     $ simg_dump <sparse_file>
+
+By default, only a summary is printed. To also print information about each
+chunk contained in the sparse file, use the `-v`/`--verbose` flag:
+
+    $ simg_dump -v <sparse_file>
 
 ## License
 
