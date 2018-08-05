@@ -72,10 +72,6 @@ fn dump_summary(spf: &sparse::File) {
         BLOCK_SIZE,
         spf.num_chunks()
     );
-
-    if spf.checksum() != 0 {
-        println!("checksum=0x{:>08x}", spf.checksum());
-    }
 }
 
 fn dump_chunks(spf: &sparse::File) {

@@ -17,11 +17,6 @@ impl File {
         Self { chunks: Vec::new() }
     }
 
-    pub fn checksum(&self) -> u32 {
-        // TODO
-        0
-    }
-
     pub fn num_blocks(&self) -> u32 {
         self.chunks
             .iter()

@@ -44,7 +44,7 @@ impl<W: Write> Writer<W> {
         let header = FileHeader {
             total_blocks: spf.num_blocks(),
             total_chunks,
-            image_checksum: spf.checksum(),
+            image_checksum: 0,
         };
         header.serialize(&mut self.dst)
     }
