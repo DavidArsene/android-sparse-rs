@@ -17,10 +17,7 @@ pub struct Reader {
 
 impl Reader {
     pub fn new(src: StdFile) -> Self {
-        Self {
-            src: src,
-            crc: None,
-        }
+        Self { src, crc: None }
     }
 
     pub fn with_crc(mut self) -> Self {
@@ -44,13 +41,13 @@ impl Reader {
         match header.chunk_type {
             ChunkType::Raw => self.read_raw_chunk(&mut spf, num_blocks),
             ChunkType::Fill => self.read_fill_chunk(&mut spf, num_blocks),
-            ChunkType::DontCare => Ok(self.read_dont_care_chunk(&mut spf, num_blocks)),
+            ChunkType::DontCare => self.read_dont_care_chunk(&mut spf, num_blocks),
             ChunkType::Crc32 => self.read_crc32_chunk(&mut spf),
         }
     }
 
     fn read_raw_chunk(&mut self, spf: &mut File, num_blocks: u32) -> Result<()> {
-        let off = self.src.seek(SeekFrom::Current(0))?;
+        let offset = self.src.seek(SeekFrom::Current(0))?;
 
         if let Some(ref mut digest) = self.crc {
             let mut block = [0; BLOCK_SIZE as usize];
@@ -65,8 +62,8 @@ impl Reader {
 
         let chunk = Chunk::Raw {
             file: self.src.try_clone()?,
-            offset: off,
-            num_blocks: num_blocks,
+            offset,
+            num_blocks,
         };
         spf.add_chunk(chunk);
 
@@ -88,7 +85,7 @@ impl Reader {
         Ok(())
     }
 
-    fn read_dont_care_chunk(&mut self, spf: &mut File, num_blocks: u32) {
+    fn read_dont_care_chunk(&mut self, spf: &mut File, num_blocks: u32) -> Result<()> {
         if let Some(ref mut digest) = self.crc {
             let block = [0; BLOCK_SIZE as usize];
             for _ in 0..num_blocks {
@@ -98,6 +95,8 @@ impl Reader {
 
         let chunk = Chunk::DontCare { num_blocks };
         spf.add_chunk(chunk);
+
+        Ok(())
     }
 
     fn read_crc32_chunk(&mut self, spf: &mut File) -> Result<()> {
@@ -127,10 +126,7 @@ pub struct Encoder {
 
 impl Encoder {
     pub fn new(src: StdFile) -> Self {
-        Self {
-            src: src,
-            chunk: None,
-        }
+        Self { src, chunk: None }
     }
 
     pub fn read(mut self, mut sparse_file: &mut File) -> Result<()> {
@@ -185,8 +181,8 @@ impl Encoder {
             }) => (
                 None,
                 Chunk::Raw {
-                    file: file,
-                    offset: offset,
+                    file,
+                    offset,
                     num_blocks: num_blocks + 1,
                 },
             ),
@@ -196,7 +192,7 @@ impl Encoder {
                 (
                     old_chunk,
                     Chunk::Raw {
-                        file: file,
+                        file,
                         offset: curr_off - u64::from(BLOCK_SIZE),
                         num_blocks: 1,
                     },
@@ -213,7 +209,7 @@ impl Encoder {
             Some(Chunk::Fill { fill, num_blocks }) if fill == new_fill => (
                 None,
                 Chunk::Fill {
-                    fill: fill,
+                    fill,
                     num_blocks: num_blocks + 1,
                 },
             ),

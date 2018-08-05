@@ -17,10 +17,7 @@ pub struct Writer<W> {
 
 impl<W: Write> Writer<W> {
     pub fn new(dst: W) -> Self {
-        Self {
-            dst: dst,
-            crc: None,
-        }
+        Self { dst, crc: None }
     }
 
     pub fn with_crc(mut self) -> Self {
@@ -46,7 +43,7 @@ impl<W: Write> Writer<W> {
 
         let header = FileHeader {
             total_blocks: spf.num_blocks(),
-            total_chunks: total_chunks,
+            total_chunks,
             image_checksum: spf.checksum(),
         };
         header.serialize(&mut self.dst)
@@ -62,7 +59,7 @@ impl<W: Write> Writer<W> {
                 num_blocks,
             } => self.write_raw_chunk(file, offset, num_blocks),
             Chunk::Fill { fill, num_blocks } => self.write_fill_chunk(fill, num_blocks),
-            Chunk::DontCare { num_blocks } => Ok(self.write_dont_care_chunk(num_blocks)),
+            Chunk::DontCare { num_blocks } => self.write_dont_care_chunk(num_blocks),
             Chunk::Crc32 { crc } => self.write_crc32_chunk(crc),
         }
     }
@@ -104,13 +101,15 @@ impl<W: Write> Writer<W> {
         self.dst.write_all(&fill).map_err(|e| e.into())
     }
 
-    fn write_dont_care_chunk(&mut self, num_blocks: u32) {
+    fn write_dont_care_chunk(&mut self, num_blocks: u32) -> Result<()> {
         if let Some(ref mut digest) = self.crc {
             let block = [0; BLOCK_SIZE as usize];
             for _ in 0..num_blocks {
                 digest.write(&block);
             }
         }
+
+        Ok(())
     }
 
     fn write_crc32_chunk(&mut self, crc: u32) -> Result<()> {

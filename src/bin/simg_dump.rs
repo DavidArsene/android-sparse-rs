@@ -10,7 +10,7 @@ use clap::{App, Arg, ArgMatches};
 use sparse::constants::{BLOCK_SIZE, CHUNK_HEADER_SIZE, FILE_HEADER_SIZE};
 use sparse::result::Result;
 
-#[derive(PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 enum Verbosity {
     Normal,
     Verbose,
@@ -38,9 +38,10 @@ fn simg_dump(args: &ArgMatches) -> Result<()> {
     let read_result = sparse::Reader::new(fi.try_clone()?).read(&mut sparse_file);
     // Even if there was an error during parsing, we may still have useful
     // information, so we dump it anyway.
-    let verbosity = match args.is_present("verbose") {
-        true => Verbosity::Verbose,
-        false => Verbosity::Normal,
+    let verbosity = if args.is_present("verbose") {
+        Verbosity::Verbose
+    } else {
+        Verbosity::Normal
     };
     dump(&sparse_file, verbosity);
     read_result?;
@@ -78,7 +79,7 @@ fn dump_summary(spf: &sparse::File) {
 }
 
 fn dump_chunks(spf: &sparse::File) {
-    println!("");
+    println!();
     println!("       |       input_bytes       |   output_blocks   |");
     println!(" chunk |   offset   |   number   | offset  |  number | type");
     println!("-----------------------------------------------------------------");
@@ -104,7 +105,7 @@ fn dump_chunks(spf: &sparse::File) {
         blocks_off += u64::from(num_blocks);
     }
 
-    println!("");
+    println!();
 }
 
 fn chunk_type_str(chunk: &sparse::file::Chunk) -> String {

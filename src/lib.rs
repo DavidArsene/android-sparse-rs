@@ -3,8 +3,8 @@ extern crate crc;
 
 pub mod constants;
 pub mod file;
-pub mod result;
 pub mod read;
+pub mod result;
 pub mod write;
 
 mod convert;

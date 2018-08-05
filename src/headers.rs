@@ -87,7 +87,7 @@ impl ChunkHeader {
         r.read_u16::<LittleEndian>()?; // reserved1
 
         Ok(Self {
-            chunk_type: chunk_type,
+            chunk_type,
             chunk_size: r.read_u32::<LittleEndian>()?,
             total_size: r.read_u32::<LittleEndian>()?,
         })
