@@ -32,17 +32,16 @@ fn parse_args<'a>() -> ArgMatches<'a> {
 }
 
 fn simg_dump(args: &ArgMatches) -> Result<()> {
-    let verbosity = match args.is_present("verbose") {
-        true => Verbosity::Verbose,
-        false => Verbosity::Normal,
-    };
-
     let mut fi = File::open(&args.value_of("sparse_file").unwrap())?;
     let mut sparse_file = sparse::File::new();
 
     let read_result = sparse::Reader::new(fi.try_clone()?).read(&mut sparse_file);
     // Even if there was an error during parsing, we may still have useful
     // information, so we dump it anyway.
+    let verbosity = match args.is_present("verbose") {
+        true => Verbosity::Verbose,
+        false => Verbosity::Normal,
+    };
     dump(&sparse_file, verbosity);
     read_result?;
 

@@ -29,17 +29,15 @@ fn simg2img(args: &ArgMatches) -> Result<()> {
     let fi = File::open(&args.value_of("sparse_file").unwrap())?;
     let fo = File::create(&args.value_of("raw_file").unwrap())?;
 
-    let writer = BufWriter::new(fo);
-
     let mut sparse_file = sparse::File::new();
     let mut reader = sparse::Reader::new(fi);
     if args.is_present("crc") {
         reader = reader.with_crc();
     }
-    let decoder = sparse::Decoder::new(writer);
-
     reader.read(&mut sparse_file)?;
-    decoder.write(&sparse_file)?;
+
+    let writer = BufWriter::new(fo);
+    sparse::Decoder::new(writer).write(&sparse_file)?;
 
     Ok(())
 }
