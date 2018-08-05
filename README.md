@@ -24,7 +24,7 @@ features of libsparse, it supports the main use cases of:
 * inspecting sparse files (`simg_dump`)
 
 Additionally, being implemented in Rust it has a couple of advantages over
-libsparse, namely guaranteed memory safety and a significanty simpler build
+libsparse, namely guaranteed memory safety and a significantly simpler build
 process across all major operating systems.
 
 ## Installation
