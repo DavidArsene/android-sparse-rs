@@ -107,7 +107,7 @@ fn dump_chunks(spf: &sparse::File) {
 fn chunk_type_str(chunk: &sparse::file::Chunk) -> String {
     use sparse::file::Chunk::*;
 
-    match *chunk {
+    match chunk {
         Raw { .. } => "raw".into(),
         Fill { fill, .. } => format!(
             "fill: \\x{:>02x}\\x{:>02x}\\x{:>02x}\\x{:>02x}",

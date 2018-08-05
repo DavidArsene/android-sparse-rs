@@ -76,7 +76,7 @@ impl<W: Write> Writer<W> {
     }
 
     fn write_chunk_header(&mut self, chunk: &Chunk) -> Result<()> {
-        let chunk_type = match *chunk {
+        let chunk_type = match chunk {
             Chunk::Raw { .. } => ChunkType::Raw,
             Chunk::Fill { .. } => ChunkType::Fill,
             Chunk::DontCare { .. } => ChunkType::DontCare,

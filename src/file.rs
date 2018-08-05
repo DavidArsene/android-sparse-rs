@@ -93,7 +93,7 @@ pub enum Chunk {
 impl Chunk {
     /// Returns this chunk's size in a sparse image.
     pub fn sparse_size(&self) -> u32 {
-        let body_size = match *self {
+        let body_size = match self {
             Chunk::Raw { num_blocks, .. } => num_blocks * BLOCK_SIZE,
             Chunk::Fill { .. } | Chunk::Crc32 { .. } => 4,
             Chunk::DontCare { .. } => 0,
