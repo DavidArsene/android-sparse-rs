@@ -3,7 +3,6 @@ use std::slice::Iter;
 
 use constants::{BLOCK_SIZE, CHUNK_HEADER_SIZE};
 use convert::TryInto;
-use headers::ChunkType;
 
 pub type ChunkIter<'a> = Iter<'a, Chunk>;
 
@@ -78,15 +77,6 @@ impl Chunk {
             | Chunk::Fill { num_blocks, .. }
             | Chunk::DontCare { num_blocks } => num_blocks,
             Chunk::Crc32 { .. } => 0,
-        }
-    }
-
-    pub fn chunk_type(&self) -> ChunkType {
-        match *self {
-            Chunk::Raw { .. } => ChunkType::Raw,
-            Chunk::Fill { .. } => ChunkType::Fill,
-            Chunk::DontCare { .. } => ChunkType::DontCare,
-            Chunk::Crc32 { .. } => ChunkType::Crc32,
         }
     }
 }

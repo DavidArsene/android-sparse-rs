@@ -7,7 +7,7 @@ use crc::crc32::Hasher32;
 
 use constants::BLOCK_SIZE;
 use file::{Chunk, File};
-use headers::{ChunkHeader, FileHeader};
+use headers::{ChunkHeader, ChunkType, FileHeader};
 use result::Result;
 
 pub struct Writer<W> {
@@ -65,8 +65,14 @@ impl<W: Write> Writer<W> {
     }
 
     fn write_chunk_header(&mut self, chunk: &Chunk) -> Result<()> {
+        let chunk_type = match *chunk {
+            Chunk::Raw { .. } => ChunkType::Raw,
+            Chunk::Fill { .. } => ChunkType::Fill,
+            Chunk::DontCare { .. } => ChunkType::DontCare,
+            Chunk::Crc32 { .. } => ChunkType::Crc32,
+        };
         let header = ChunkHeader {
-            chunk_type: chunk.chunk_type(),
+            chunk_type,
             chunk_size: chunk.num_blocks(),
             total_size: chunk.sparse_size(),
         };
