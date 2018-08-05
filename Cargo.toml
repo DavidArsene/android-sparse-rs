@@ -7,7 +7,7 @@ repository = "https://gitlab.com/ra_kete/android-sparse-rs"
 readme = "README.md"
 keywords = ["android", "sparse"]
 categories = ["command-line-utilities", "compression", "parsing"]
-license = "MIT/Apache-2.0"
+license = "MIT"
 
 [dependencies]
 byteorder = "1"
