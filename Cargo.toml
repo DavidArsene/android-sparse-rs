@@ -1,9 +1,9 @@
 [package]
 name = "android-sparse"
 version = "0.3.1"
-authors = ["Jan Teske <jan.teske@gmail.com>"]
+authors = ["Jan Teske <jteske@posteo.net>"]
 description = "An implementation of Android's sparse file format."
-repository = "https://gitlab.com/haellowyyn/android-sparse-rs"
+repository = "https://gitlab.com/ra_kete/android-sparse-rs"
 readme = "README.md"
 keywords = ["android", "sparse"]
 categories = ["command-line-utilities", "compression", "parsing"]
@@ -15,4 +15,4 @@ clap = "2"
 crc = "1"
 
 [badges]
-gitlab = { repository = "haellowyyn/android-sparse-rs" }
+gitlab = { repository = "ra_kete/android-sparse-rs" }
