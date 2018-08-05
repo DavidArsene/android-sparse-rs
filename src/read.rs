@@ -1,3 +1,5 @@
+//! Sparse file reading and encoding.
+
 use std::fs::File as StdFile;
 use std::io::{ErrorKind, Read, Seek, SeekFrom};
 
@@ -10,21 +12,25 @@ use file::{Chunk, File};
 use headers::{ChunkHeader, ChunkType, FileHeader};
 use result::Result;
 
+/// Reads sparse files from something that implements `Read`.
 pub struct Reader {
     src: StdFile,
     crc: Option<crc32::Digest>,
 }
 
 impl Reader {
+    /// Creates a new sparse file reader that reads from `src`.
     pub fn new(src: StdFile) -> Self {
         Self { src, crc: None }
     }
 
+    /// Enables CRC32 checksum validation.
     pub fn with_crc(mut self) -> Self {
         self.crc = Some(crc32::Digest::new(crc32::IEEE));
         self
     }
 
+    /// Reads `sparse_file` from this reader's source.
     pub fn read(mut self, mut sparse_file: &mut File) -> Result<()> {
         let header = FileHeader::deserialize(&mut self.src)?;
         for _ in 0..header.total_chunks {
@@ -119,16 +125,21 @@ impl Reader {
     }
 }
 
+/// Reads raw images from something that implements `Read` and encodes them
+/// as sparse files.
 pub struct Encoder {
     src: StdFile,
     chunk: Option<Chunk>,
 }
 
 impl Encoder {
+    /// Creates a new sparse file encoder that reads from `src`.
     pub fn new(src: StdFile) -> Self {
         Self { src, chunk: None }
     }
 
+    /// Reads a raw image from this encoder's source and encodes it into
+    /// `sparse_file`.
     pub fn read(mut self, mut sparse_file: &mut File) -> Result<()> {
         let block_size = BLOCK_SIZE as usize;
         let mut block = vec![0; block_size];
@@ -159,6 +170,9 @@ impl Encoder {
         Ok(())
     }
 
+    /// Tries to merge `block` into the current chunk. If this is not
+    /// possible, returns the current chunk and makes `block` the new current
+    /// chunk.
     fn merge_block(&mut self, block: &[u8]) -> Result<Option<Chunk>> {
         if is_sparse_block(block) {
             let fill = read4(block)?;
@@ -172,37 +186,38 @@ impl Encoder {
         }
     }
 
+    /// Tries to merge the current chunk with the following raw block.
     fn merge_raw_block(&mut self) -> Result<Option<Chunk>> {
         let (old, new) = match self.chunk.take() {
             Some(Chunk::Raw {
                 file,
                 offset,
                 num_blocks,
-            }) => (
-                None,
-                Chunk::Raw {
+            }) => {
+                let merged = Chunk::Raw {
                     file,
                     offset,
                     num_blocks: num_blocks + 1,
-                },
-            ),
+                };
+                (None, merged)
+            }
             old_chunk => {
                 let mut file = self.src.try_clone()?;
                 let curr_off = file.seek(SeekFrom::Current(0))?;
-                (
-                    old_chunk,
-                    Chunk::Raw {
-                        file,
-                        offset: curr_off - u64::from(BLOCK_SIZE),
-                        num_blocks: 1,
-                    },
-                )
+                let new_chunk = Chunk::Raw {
+                    file,
+                    offset: curr_off - u64::from(BLOCK_SIZE),
+                    num_blocks: 1,
+                };
+                (old_chunk, new_chunk)
             }
         };
         self.chunk = Some(new);
         Ok(old)
     }
 
+    /// Tries to merge the current chunk with the following block, filled with
+    /// `fill`.
     fn merge_fill_block(&mut self, fill: [u8; 4]) -> Option<Chunk> {
         let new_fill = fill;
         let (old, new) = match self.chunk.take() {
@@ -225,6 +240,7 @@ impl Encoder {
         old
     }
 
+    // Tries to merge the current chunk with the following don't-care block.
     fn merge_don_care_block(&mut self) -> Option<Chunk> {
         let (old, new) = match self.chunk.take() {
             Some(Chunk::DontCare { num_blocks }) => (
@@ -240,6 +256,7 @@ impl Encoder {
     }
 }
 
+/// Is `block` filled with the same 4-byte value?
 fn is_sparse_block(block: &[u8]) -> bool {
     if block.len() != BLOCK_SIZE as usize {
         return false;
@@ -256,12 +273,14 @@ fn is_sparse_block(block: &[u8]) -> bool {
     true
 }
 
+/// Reads 4 bytes from `r`.
 fn read4<R: Read>(mut r: R) -> Result<[u8; 4]> {
     let mut buf = [0; 4];
     r.read_exact(&mut buf)?;
     Ok(buf)
 }
 
+/// Fills `buf` from `r`, returns an error if not possible.
 fn read_all<R: Read>(mut r: R, mut buf: &mut [u8]) -> Result<usize> {
     let buf_size = buf.len();
 

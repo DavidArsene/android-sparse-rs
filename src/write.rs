@@ -1,3 +1,5 @@
+//! Sparse file writing and decoding.
+
 use std::fs::File as StdFile;
 use std::io::{Read, Seek, SeekFrom, Write};
 
@@ -10,21 +12,25 @@ use file::{Chunk, File};
 use headers::{ChunkHeader, ChunkType, FileHeader};
 use result::Result;
 
+/// Writes sparse files to something that implements `Write`.
 pub struct Writer<W> {
     dst: W,
     crc: Option<crc32::Digest>,
 }
 
 impl<W: Write> Writer<W> {
+    /// Creates a new sparse file writer that writes to `dst`.
     pub fn new(dst: W) -> Self {
         Self { dst, crc: None }
     }
 
+    /// Enables CRC32 checksum writing.
     pub fn with_crc(mut self) -> Self {
         self.crc = Some(crc32::Digest::new(crc32::IEEE));
         self
     }
 
+    /// Writes `sparse_file` to this writer's destination.
     pub fn write(mut self, sparse_file: &File) -> Result<()> {
         self.write_file_header(sparse_file)?;
 
@@ -38,13 +44,18 @@ impl<W: Write> Writer<W> {
     fn write_file_header(&mut self, spf: &File) -> Result<()> {
         let mut total_chunks = spf.num_chunks();
         if self.crc.is_some() {
-            total_chunks += 1;
+            total_chunks += 1; // count extra Crc32 chunk
         }
+
+        // Like libsparse, we always set the checksum value in the file header
+        // to 0. If checksum writing is enabled, we append a Crc32 chunk at
+        // the end of the file instead.
+        let image_checksum = 0;
 
         let header = FileHeader {
             total_blocks: spf.num_blocks(),
             total_chunks,
-            image_checksum: 0,
+            image_checksum,
         };
         header.serialize(&mut self.dst)
     }
@@ -137,15 +148,20 @@ impl<W: Write> Writer<W> {
     }
 }
 
+/// Decodes sparse files to raw images and writes them to something that
+/// implements `Write`.
 pub struct Decoder<W> {
     dst: W,
 }
 
 impl<W: Write> Decoder<W> {
+    /// Creates a new sparse file decoder that writes to `dst`.
     pub fn new(dst: W) -> Self {
         Self { dst }
     }
 
+    /// Decodes `sparse_file` and write the raw image to this decoder's
+    /// destination.
     pub fn write(mut self, sparse_file: &File) -> Result<()> {
         for chunk in sparse_file.chunk_iter() {
             self.write_chunk(chunk)?;
@@ -188,12 +204,15 @@ impl<W: Write> Decoder<W> {
     }
 }
 
+/// Starting from `offset`, reads `num_blocks` blocks from `file` and copies
+/// them to `writer`.
 fn copy_from_file<W: Write>(file: &StdFile, writer: W, offset: u64, num_blocks: u32) -> Result<()> {
     let mut file = file.try_clone()?;
     file.seek(SeekFrom::Start(offset))?;
     copy_blocks(&mut file, writer, num_blocks)
 }
 
+/// Copies `num_blocks` blocks from `r` to `w`.
 fn copy_blocks<R: Read, W: Write>(mut r: R, mut w: W, num_blocks: u32) -> Result<()> {
     let mut block = [0; BLOCK_SIZE as usize];
     for _ in 0..num_blocks {

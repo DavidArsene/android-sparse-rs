@@ -1,3 +1,5 @@
+//! Sparse file header parsing.
+
 use std::error::Error;
 use std::io::{Read, Write};
 
@@ -15,6 +17,7 @@ const CHUNK_MAGIC_FILL: u16 = 0xcac2;
 const CHUNK_MAGIC_DONT_CARE: u16 = 0xcac3;
 const CHUNK_MAGIC_CRC32: u16 = 0xcac4;
 
+/// A sparse file header.
 #[derive(Clone, Debug)]
 pub struct FileHeader {
     pub total_blocks: u32,
@@ -23,6 +26,7 @@ pub struct FileHeader {
 }
 
 impl FileHeader {
+    /// Reads and deserializes a sparse file header from `r`.
     pub fn deserialize<R: Read>(mut r: R) -> Result<Self> {
         let magic = r.read_u32::<LittleEndian>()?;
         if magic != FILE_MAGIC {
@@ -55,6 +59,7 @@ impl FileHeader {
         })
     }
 
+    /// Serializes this sparse file header into `w`.
     pub fn serialize<W: Write>(&self, mut w: W) -> Result<()> {
         w.write_u32::<LittleEndian>(FILE_MAGIC)?;
 
@@ -74,6 +79,7 @@ impl FileHeader {
     }
 }
 
+/// A sparse file chunk header.
 #[derive(Clone, Debug)]
 pub struct ChunkHeader {
     pub chunk_type: ChunkType,
@@ -82,6 +88,7 @@ pub struct ChunkHeader {
 }
 
 impl ChunkHeader {
+    /// Reads and deserializes a chunk header from `r`.
     pub fn deserialize<R: Read>(mut r: R) -> Result<Self> {
         let chunk_type = r.read_u16::<LittleEndian>()?.try_into()?;
         r.read_u16::<LittleEndian>()?; // reserved1
@@ -93,6 +100,7 @@ impl ChunkHeader {
         })
     }
 
+    /// Serializes this chunk header into `w`.
     pub fn serialize<W: Write>(&self, mut w: W) -> Result<()> {
         w.write_u16::<LittleEndian>(self.chunk_type.into())?;
         w.write_u16::<LittleEndian>(0)?; // reserved1
@@ -104,6 +112,7 @@ impl ChunkHeader {
     }
 }
 
+/// The type of a sparse file chunk.
 #[derive(Clone, Copy, Debug)]
 pub enum ChunkType {
     Raw,
