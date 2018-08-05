@@ -13,7 +13,7 @@ fn parse_args<'a>() -> ArgMatches<'a> {
     App::new("simg2img")
         .about("Decode a sparse file to a raw file")
         .version(crate_version!())
-        .author("Jan Teske <jan.teske@gmail.com>")
+        .author(crate_authors!())
         .arg(Arg::with_name("sparse_file").required(true))
         .arg(Arg::with_name("raw_file").required(true))
         .arg(

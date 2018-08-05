@@ -20,7 +20,7 @@ fn parse_args<'a>() -> ArgMatches<'a> {
     App::new("simg_dump")
         .about("Display sparse file info")
         .version(crate_version!())
-        .author("Jan Teske <jan.teske@gmail.com>")
+        .author(crate_authors!())
         .arg(Arg::with_name("sparse_file").required(true))
         .arg(
             Arg::with_name("verbose")
@@ -65,7 +65,6 @@ fn dump(spf: &sparse::File, verbosity: Verbosity) {
     }
 }
 
-
 fn dump_summary(spf: &sparse::File) {
     println!(
         "Total of {} {}-byte output blocks in {} input chunks.",
@@ -78,7 +77,6 @@ fn dump_summary(spf: &sparse::File) {
         println!("checksum=0x{:>08x}", spf.checksum());
     }
 }
-
 
 fn dump_chunks(spf: &sparse::File) {
     println!("");
@@ -117,10 +115,7 @@ fn chunk_type_str(chunk: &sparse::file::Chunk) -> String {
         Raw { .. } => "raw".into(),
         Fill { fill, .. } => format!(
             "fill: \\x{:>02x}\\x{:>02x}\\x{:>02x}\\x{:>02x}",
-            fill[0],
-            fill[1],
-            fill[2],
-            fill[3]
+            fill[0], fill[1], fill[2], fill[3]
         ),
         DontCare { .. } => "dont_care".into(),
         Crc32 { crc } => format!("crc32: 0x{:>08x}", crc),
