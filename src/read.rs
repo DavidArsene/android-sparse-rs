@@ -1,4 +1,4 @@
-//! Sparse file reading and encoding.
+//! Sparse image reading and raw image encoding.
 
 use std::fs::File as StdFile;
 use std::io::{ErrorKind, Read, Seek, SeekFrom};
@@ -12,7 +12,7 @@ use file::{Chunk, File};
 use headers::{ChunkHeader, ChunkType, FileHeader};
 use result::Result;
 
-/// Reads sparse files from something that implements `Read`.
+/// Reads sparse files from sparse images.
 pub struct Reader {
     src: StdFile,
     crc: Option<crc32::Digest>,
@@ -125,8 +125,7 @@ impl Reader {
     }
 }
 
-/// Reads raw images from something that implements `Read` and encodes them
-/// as sparse files.
+/// Reads raw images and encodes them as sparse files.
 pub struct Encoder {
     src: StdFile,
     chunk: Option<Chunk>,

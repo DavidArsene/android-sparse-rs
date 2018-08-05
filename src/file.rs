@@ -49,15 +49,17 @@ impl File {
     }
 }
 
-/// A sparse file chunk, representing either:
+/// A sparse file chunk.
+///
+/// A chunk represents either:
 /// - a part of the raw image of size `num_blocks * BLOCK_SIZE`, or
-/// - the CRC32 checksum of the raw image at this point
+/// - the CRC32 checksum of the raw image data up to this point
 #[derive(Debug)]
 pub enum Chunk {
     /// Chunk representing blocks of raw bytes.
     ///
-    /// To keep memory usage low when dealing with sparse files, a raw chunk
-    /// holds a reference to its backing file instead of the actual data.
+    /// To keep memory usage low, a raw chunk holds a reference to its backing
+    /// file instead of the actual raw data.
     Raw {
         /// Reference to the backing file.
         file: StdFile,
@@ -89,7 +91,7 @@ pub enum Chunk {
 }
 
 impl Chunk {
-    /// Returns the chunk's size in a sparse file.
+    /// Returns this chunk's size in a sparse image.
     pub fn sparse_size(&self) -> u32 {
         let body_size = match *self {
             Chunk::Raw { num_blocks, .. } => num_blocks * BLOCK_SIZE,
@@ -99,12 +101,12 @@ impl Chunk {
         u32::from(CHUNK_HEADER_SIZE) + body_size
     }
 
-    /// Returns the size of the chunk's decoded raw data.
+    /// Returns the size of this chunk's decoded raw data.
     pub fn raw_size(&self) -> u32 {
         self.num_blocks() * BLOCK_SIZE
     }
 
-    /// Returns the number of blocks represented by the chunk.
+    /// Returns the number of blocks contained in this chunk.
     pub fn num_blocks(&self) -> u32 {
         match *self {
             Chunk::Raw { num_blocks, .. }

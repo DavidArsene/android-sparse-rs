@@ -1,4 +1,4 @@
-//! Sparse file writing and decoding.
+//! Sparse image writing and decoding to raw images.
 
 use std::fs::File as StdFile;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -12,7 +12,7 @@ use file::{Chunk, File};
 use headers::{ChunkHeader, ChunkType, FileHeader};
 use result::Result;
 
-/// Writes sparse files to something that implements `Write`.
+/// Writes sparse files to sparse images.
 pub struct Writer<W> {
     dst: W,
     crc: Option<crc32::Digest>,
@@ -148,8 +148,7 @@ impl<W: Write> Writer<W> {
     }
 }
 
-/// Decodes sparse files to raw images and writes them to something that
-/// implements `Write`.
+/// Decodes sparse files and writes them as raw images.
 pub struct Decoder<W> {
     dst: W,
 }

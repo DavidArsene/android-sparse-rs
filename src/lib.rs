@@ -1,7 +1,20 @@
 //! An implementation of Android's sparse file format.
 //!
-//! Enables reading and writing sparse files, as well as encoding from and
+//! Enables reading and writing sparse images, as well as encoding from and
 //! decoding to raw images.
+//!
+//! For consistency, this documentation refers to actual files on the file
+//! system as *images*. A *raw image* is an image in its original,
+//! uncompressed form. A *sparse image* is a sparse-encoded image.
+//! `android-sparse` implements means to convert raw to sparse images and vice
+//! versa, via an intermediate representation referred to as *sparse file*:
+//!
+//! ```text
+//!  -------                --------               --------
+//! | raw   | --Encoder--> | sparse | <--Reader-- | sparse |
+//! | image | <--Decoder-- | file   | --Writer--> | image  |
+//!  -------                --------               --------
+//! ```
 
 #![warn(missing_docs)]
 
