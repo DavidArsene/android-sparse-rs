@@ -1,6 +1,8 @@
 //! Sparse file data structures.
 
+use std::cell::RefCell;
 use std::fs::File as StdFile;
+use std::rc::Rc;
 use std::slice::Iter;
 
 use constants::{BLOCK_SIZE, CHUNK_HEADER_SIZE};
@@ -62,7 +64,7 @@ pub enum Chunk {
     /// file instead of the actual raw data.
     Raw {
         /// Reference to the backing file.
-        file: StdFile,
+        file: Rc<RefCell<StdFile>>,
         /// Offset into the backing file to the start of the raw bytes.
         offset: u64,
         /// Number of blocks contained in this chunk.

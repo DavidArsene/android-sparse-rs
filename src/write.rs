@@ -68,7 +68,7 @@ impl<W: Write> Writer<W> {
                 ref file,
                 offset,
                 num_blocks,
-            } => self.write_raw_chunk(file, offset, num_blocks),
+            } => self.write_raw_chunk(&*file.borrow_mut(), offset, num_blocks),
             Chunk::Fill { fill, num_blocks } => self.write_fill_chunk(fill, num_blocks),
             Chunk::DontCare { num_blocks } => self.write_dont_care_chunk(num_blocks),
             Chunk::Crc32 { crc } => self.write_crc32_chunk(crc),
@@ -175,7 +175,7 @@ impl<W: Write> Decoder<W> {
                 ref file,
                 offset,
                 num_blocks,
-            } => copy_from_file(file, &mut self.dst, offset, num_blocks)?,
+            } => copy_from_file(&*file.borrow(), &mut self.dst, offset, num_blocks)?,
 
             Chunk::Fill { fill, num_blocks } => {
                 let block = fill

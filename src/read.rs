@@ -1,7 +1,9 @@
 //! Sparse image reading and raw image encoding.
 
+use std::cell::RefCell;
 use std::fs::File as StdFile;
 use std::io::{ErrorKind, Read, Seek, SeekFrom};
+use std::rc::Rc;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use crc::crc32;
@@ -14,14 +16,17 @@ use result::Result;
 
 /// Reads sparse files from sparse images.
 pub struct Reader {
-    src: StdFile,
+    src: Rc<RefCell<StdFile>>,
     crc: Option<crc32::Digest>,
 }
 
 impl Reader {
     /// Creates a new sparse file reader that reads from `src`.
     pub fn new(src: StdFile) -> Self {
-        Self { src, crc: None }
+        Self {
+            src: Rc::new(RefCell::new(src)),
+            crc: None,
+        }
     }
 
     /// Enables CRC32 checksum validation.
@@ -32,7 +37,7 @@ impl Reader {
 
     /// Reads `sparse_file` from this reader's source.
     pub fn read(mut self, mut sparse_file: &mut File) -> Result<()> {
-        let header = FileHeader::deserialize(&mut self.src)?;
+        let header = FileHeader::deserialize(&*self.src.borrow_mut())?;
         for _ in 0..header.total_chunks {
             self.read_chunk(&mut sparse_file)?;
         }
@@ -41,7 +46,7 @@ impl Reader {
     }
 
     fn read_chunk(&mut self, mut spf: &mut File) -> Result<()> {
-        let header = ChunkHeader::deserialize(&mut self.src)?;
+        let header = ChunkHeader::deserialize(&*self.src.borrow_mut())?;
         let num_blocks = header.chunk_size;
 
         match header.chunk_type {
@@ -53,21 +58,21 @@ impl Reader {
     }
 
     fn read_raw_chunk(&mut self, spf: &mut File, num_blocks: u32) -> Result<()> {
-        let offset = self.src.seek(SeekFrom::Current(0))?;
+        let offset = self.src.borrow_mut().seek(SeekFrom::Current(0))?;
 
         if let Some(ref mut digest) = self.crc {
             let mut block = [0; BLOCK_SIZE as usize];
             for _ in 0..num_blocks {
-                self.src.read_exact(&mut block)?;
+                self.src.borrow_mut().read_exact(&mut block)?;
                 digest.write(&block);
             }
         } else {
             let size = i64::from(num_blocks * BLOCK_SIZE);
-            self.src.seek(SeekFrom::Current(size))?;
+            self.src.borrow_mut().seek(SeekFrom::Current(size))?;
         }
 
         let chunk = Chunk::Raw {
-            file: self.src.try_clone()?,
+            file: self.src.clone(),
             offset,
             num_blocks,
         };
@@ -77,7 +82,7 @@ impl Reader {
     }
 
     fn read_fill_chunk(&mut self, spf: &mut File, num_blocks: u32) -> Result<()> {
-        let fill = read4(&mut self.src)?;
+        let fill = read4(&*self.src.borrow_mut())?;
 
         if let Some(ref mut digest) = self.crc {
             for _ in 0..(num_blocks * BLOCK_SIZE / 4) {
@@ -106,7 +111,7 @@ impl Reader {
     }
 
     fn read_crc32_chunk(&mut self, spf: &mut File) -> Result<()> {
-        let crc = self.src.read_u32::<LittleEndian>()?;
+        let crc = self.src.borrow_mut().read_u32::<LittleEndian>()?;
         self.check_crc(crc)?;
 
         let chunk = Chunk::Crc32 { crc };
@@ -127,14 +132,17 @@ impl Reader {
 
 /// Reads raw images and encodes them as sparse files.
 pub struct Encoder {
-    src: StdFile,
+    src: Rc<RefCell<StdFile>>,
     chunk: Option<Chunk>,
 }
 
 impl Encoder {
     /// Creates a new sparse file encoder that reads from `src`.
     pub fn new(src: StdFile) -> Self {
-        Self { src, chunk: None }
+        Self {
+            src: Rc::new(RefCell::new(src)),
+            chunk: None,
+        }
     }
 
     /// Reads a raw image from this encoder's source and encodes it into
@@ -143,7 +151,7 @@ impl Encoder {
         let block_size = BLOCK_SIZE as usize;
         let mut block = vec![0; block_size];
         loop {
-            let bytes_read = read_all(&mut self.src, &mut block)?;
+            let bytes_read = read_all(&*self.src.borrow_mut(), &mut block)?;
             self.read_block(&mut sparse_file, &block[..bytes_read])?;
             if bytes_read != block_size {
                 break;
@@ -201,8 +209,8 @@ impl Encoder {
                 (None, merged)
             }
             old_chunk => {
-                let mut file = self.src.try_clone()?;
-                let curr_off = file.seek(SeekFrom::Current(0))?;
+                let mut file = self.src.clone();
+                let curr_off = file.borrow_mut().seek(SeekFrom::Current(0))?;
                 let new_chunk = Chunk::Raw {
                     file,
                     offset: curr_off - u64::from(BLOCK_SIZE),
