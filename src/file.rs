@@ -46,9 +46,16 @@ pub enum Chunk {
         offset: u64,
         num_blocks: u32,
     },
-    Fill { fill: [u8; 4], num_blocks: u32 },
-    DontCare { num_blocks: u32 },
-    Crc32 { crc: u32 },
+    Fill {
+        fill: [u8; 4],
+        num_blocks: u32,
+    },
+    DontCare {
+        num_blocks: u32,
+    },
+    Crc32 {
+        crc: u32,
+    },
 }
 
 impl Chunk {
@@ -67,9 +74,9 @@ impl Chunk {
 
     pub fn num_blocks(&self) -> u32 {
         match *self {
-            Chunk::Raw { num_blocks, .. } |
-            Chunk::Fill { num_blocks, .. } |
-            Chunk::DontCare { num_blocks } => num_blocks,
+            Chunk::Raw { num_blocks, .. }
+            | Chunk::Fill { num_blocks, .. }
+            | Chunk::DontCare { num_blocks } => num_blocks,
             Chunk::Crc32 { .. } => 0,
         }
     }

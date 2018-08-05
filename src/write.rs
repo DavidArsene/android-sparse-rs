@@ -157,7 +157,8 @@ impl<W: Write> Decoder<W> {
             } => copy_from_file(file, &mut self.dst, offset, num_blocks)?,
 
             Chunk::Fill { fill, num_blocks } => {
-                let block = fill.iter()
+                let block = fill
+                    .iter()
                     .cycle()
                     .cloned()
                     .take(BLOCK_SIZE as usize)
