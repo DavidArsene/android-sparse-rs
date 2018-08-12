@@ -5,10 +5,12 @@ use std::io::prelude::*;
 use std::io::{BufReader, ErrorKind};
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use crc::crc32;
+use crc::crc32::Hasher32;
 
-use block::Block;
+use block::{Block, WriteBlock};
 use headers::{ChunkHeader, ChunkType, FileHeader};
-use result::Result;
+use result::{Error, Result};
 
 /// Reads sparse blocks from a sparse image.
 ///
@@ -19,11 +21,16 @@ pub struct Reader {
     current_chunk: Option<ChunkHeader>,
     current_fill: Option<[u8; 4]>,
     remaining_chunks: u32,
+    crc: Option<crc32::Digest>,
     finished: bool,
 }
 
 impl Reader {
     /// Creates a new reader that reads from `file`.
+    ///
+    /// The created reader skips checksum verification in favor of
+    /// speed. To get a reader that does checksum verification, use
+    /// `Reader::with_crc` instead.
     pub fn new(file: File) -> Result<Self> {
         let mut src = BufReader::new(file);
         let header = FileHeader::read_from(&mut src)?;
@@ -32,8 +39,17 @@ impl Reader {
             current_chunk: None,
             current_fill: None,
             remaining_chunks: header.total_chunks,
+            crc: None,
             finished: false,
         })
+    }
+
+    /// Creates a new reader that reads from `file` and verifies all
+    /// included checksums.
+    pub fn with_crc(file: File) -> Result<Self> {
+        let mut reader = Self::new(file)?;
+        reader.crc = Some(crc32::Digest::new(crc32::IEEE));
+        Ok(reader)
     }
 
     fn next_block(&mut self) -> Result<Block> {
@@ -43,6 +59,9 @@ impl Reader {
         };
 
         let block = self.read_block(&mut chunk)?;
+        if let Some(digest) = self.crc.as_mut() {
+            digest.write_block(&block);
+        }
 
         if chunk.chunk_size <= 1 {
             self.remaining_chunks -= 1;
@@ -76,9 +95,20 @@ impl Reader {
             ChunkType::DontCare => Ok(Block::DontCare),
             ChunkType::Crc32 => {
                 let checksum = self.src.read_u32::<LittleEndian>()?;
+                self.verify_checksum(checksum)?;
                 Ok(Block::Crc32(checksum))
             }
         }
+    }
+
+    fn verify_checksum(&self, checksum: u32) -> Result<()> {
+        if let Some(digest) = self.crc.as_ref() {
+            if digest.sum32() != checksum {
+                return Err(Error::Parse("Checksum does not match".into()));
+            }
+        }
+
+        Ok(())
     }
 }
 

@@ -13,6 +13,7 @@
 #![deny(missing_docs)]
 
 extern crate byteorder;
+extern crate crc;
 
 pub mod block;
 pub mod read;

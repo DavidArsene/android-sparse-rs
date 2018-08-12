@@ -13,12 +13,12 @@ fn parse_args<'a>() -> ArgMatches<'a> {
         .author(crate_authors!())
         .arg(Arg::with_name("sparse_file").required(true))
         .arg(Arg::with_name("raw_file").required(true))
-        // .arg(
-        //     Arg::with_name("crc")
-        //         .help("Check the sparse image checksum")
-        //         .short("c")
-        //         .long("crc"),
-        // )
+        .arg(
+            Arg::with_name("crc")
+                .help("Verify all checksums in the sparse image")
+                .short("c")
+                .long("crc"),
+        )
         .get_matches()
 }
 
@@ -26,7 +26,12 @@ fn simg2img(args: &ArgMatches) -> sparse::Result<()> {
     let fi = File::open(&args.value_of("sparse_file").unwrap())?;
     let fo = File::create(&args.value_of("raw_file").unwrap())?;
 
-    let reader = sparse::Reader::new(fi)?;
+    let reader = if args.is_present("crc") {
+        sparse::Reader::with_crc(fi)?
+    } else {
+        sparse::Reader::new(fi)?
+    };
+
     let mut decoder = sparse::Decoder::new(fo)?;
 
     for block in reader {

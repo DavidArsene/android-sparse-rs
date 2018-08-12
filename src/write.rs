@@ -5,8 +5,10 @@ use std::io::prelude::*;
 use std::io::{BufWriter, SeekFrom};
 
 use byteorder::{LittleEndian, WriteBytesExt};
+use crc::crc32;
+use crc::crc32::Hasher32;
 
-use block::Block;
+use block::{Block, WriteBlock};
 use headers::{ChunkHeader, ChunkType, FileHeader};
 use result::Result;
 
@@ -17,10 +19,15 @@ pub struct Writer {
     current_fill: Option<[u8; 4]>,
     num_blocks: u32,
     num_chunks: u32,
+    crc: Option<crc32::Digest>,
 }
 
 impl Writer {
     /// Creates a new writer that writes to `file`.
+    ///
+    /// The created writer skips checksum calculation in favor of
+    /// speed. To get a writer that does checksum calculation, use
+    /// `Writer::with_crc` instead.
     pub fn new(file: File) -> Result<Self> {
         let mut dst = BufWriter::new(file);
         // We cannot write the file header until we know the total number of
@@ -34,7 +41,16 @@ impl Writer {
             current_fill: None,
             num_blocks: 0,
             num_chunks: 0,
+            crc: None,
         })
+    }
+
+    /// Creates a new writer that writes to `file` and adds a checksum
+    /// at the end.
+    pub fn with_crc(file: File) -> Result<Self> {
+        let mut writer = Self::new(file)?;
+        writer.crc = Some(crc32::Digest::new(crc32::IEEE));
+        Ok(writer)
     }
 
     /// Writes a sparse block to this writer.
@@ -62,12 +78,17 @@ impl Writer {
             Block::Crc32(checksum) => self.dst.write_u32::<LittleEndian>(*checksum)?,
         }
 
+        if let Some(digest) = self.crc.as_mut() {
+            digest.write_block(&block);
+        }
+
         chunk.chunk_size += 1;
         Ok(())
     }
 
     /// Finish writing the sparse image and flush any buffered data.
     pub fn finish(mut self) -> Result<()> {
+        self.write_checksum()?;
         self.finish_chunk()?;
 
         // Like libsparse, we always set the checksum value in the file header
@@ -144,6 +165,16 @@ impl Writer {
         self.num_blocks += chunk.chunk_size;
 
         Ok(())
+    }
+
+    fn write_checksum(&mut self) -> Result<()> {
+        let checksum = match self.crc.as_ref() {
+            Some(digest) => digest.sum32(),
+            None => return Ok(()),
+        };
+
+        let block = Block::Crc32(checksum);
+        self.write_block(&block)
     }
 }
 

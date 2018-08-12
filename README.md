@@ -10,18 +10,17 @@ format and must be decoded before they can be further inspected.
 There is no official documentation of the sparse format. However,
 [libsparse](https://android.googlesource.com/platform/system/core/+/master/libsparse/)
 is part of the Android Open Source Project (AOSP). It provides utilities to
-convert from raw to sparse files and back, called `img2simg` and `simg2img`,
+convert from raw to sparse images and back, called `img2simg` and `simg2img`,
 respectively. Unfortunately, these tools are not part of the Android SDK. To
-use them, one has to download the AOSP and build them from source, which can be
-a rather time-consuming undertaking.
+use them, one has to download the AOSP and build them from source, which can
+be a rather time-consuming undertaking.
 
 This project reimplements parts of libsparse in Rust to make working with
-sparse files less of a hassle. While android-sparse doesn't implement all
+sparse images less of a hassle. While android-sparse doesn't implement all
 features of libsparse, it supports the main use cases of:
 
-* converting raw to sparse files (`img2simg`)
-* converting sparse to raw files (`simg2img`)
-* inspecting sparse files (`simg_dump`)
+* converting raw to sparse images (`img2simg`)
+* converting sparse to raw images (`simg2img`)
 
 Additionally, being implemented in Rust it has a couple of advantages over
 libsparse, namely guaranteed memory safety and a significantly simpler build
@@ -48,24 +47,24 @@ installed Rust via `rustup`, this directory is located at:
 
 ### Encoding
 
-Encoding a raw file to a sparse file:
+Encoding a raw image to a sparse image:
 
-    $ img2simg <raw_file> <sparse_file>
+    $ img2simg <raw_image> <sparse_image>
 
-The `-c`/`--crc` flag makes `img2simg` write an image checksum to the sparse file:
+The `-c`/`--crc` flag makes `img2simg` write a checksum to the sparse image:
 
-    $ img2simg --crc <raw_file> <sparse_file>
+    $ img2simg --crc <raw_image> <sparse_image>
 
 ### Decoding
 
-Decoding a sparse file to a raw file:
+Decoding a sparse image to a raw image:
 
-    $ simg2img <sparse_file> <raw_file>
+    $ simg2img <sparse_image> <raw_image>
 
-The `-c`/`--crc` flag makes `simg2img` check the checksums included in the sparse
-file. Decoding is aborted if they don't match.
+The `-c`/`--crc` flag makes `simg2img` check the checksums included in the
+sparse image. Decoding is aborted if they don't match.
 
-    $ simg2img --crc <sparse_file> <raw_file>
+    $ simg2img --crc <sparse_image> <raw_image>
 
 ## License
 
