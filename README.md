@@ -67,17 +67,6 @@ file. Decoding is aborted if they don't match.
 
     $ simg2img --crc <sparse_file> <raw_file>
 
-### Inspection
-
-Displaying sparse file info:
-
-    $ simg_dump <sparse_file>
-
-By default, only a summary is printed. To also print information about each
-chunk contained in the sparse file, use the `-v`/`--verbose` flag:
-
-    $ simg_dump -v <sparse_file>
-
 ## License
 
 This project is licensed under the MIT license ([LICENSE](LICENSE) or

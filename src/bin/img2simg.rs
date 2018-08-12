@@ -3,11 +3,8 @@ extern crate android_sparse as sparse;
 extern crate clap;
 
 use std::fs::File;
-use std::io::BufWriter;
 
 use clap::{App, Arg, ArgMatches};
-
-use sparse::result::Result;
 
 fn parse_args<'a>() -> ArgMatches<'a> {
     App::new("img2simg")
@@ -16,29 +13,26 @@ fn parse_args<'a>() -> ArgMatches<'a> {
         .author(crate_authors!())
         .arg(Arg::with_name("raw_file").required(true))
         .arg(Arg::with_name("sparse_file").required(true))
-        .arg(
-            Arg::with_name("crc")
-                .help("Compute the sparse image checksum")
-                .short("c")
-                .long("crc"),
-        )
+        // .arg(
+        //     Arg::with_name("crc")
+        //         .help("Compute the sparse image checksum")
+        //         .short("c")
+        //         .long("crc"),
+        // )
         .get_matches()
 }
 
-fn img2simg(args: &ArgMatches) -> Result<()> {
+fn img2simg(args: &ArgMatches) -> sparse::Result<()> {
     let fi = File::open(&args.value_of("raw_file").unwrap())?;
     let fo = File::create(&args.value_of("sparse_file").unwrap())?;
 
-    let mut sparse_file = sparse::File::new();
-    sparse::Encoder::new(fi).read(&mut sparse_file)?;
+    let encoder = sparse::Encoder::new(fi)?;
+    let mut writer = sparse::Writer::new(fo)?;
 
-    let mut writer = sparse::Writer::new(BufWriter::new(fo));
-    if args.is_present("crc") {
-        writer = writer.with_crc();
+    for block in encoder {
+        writer.write_block(&block?)?;
     }
-    writer.write(&sparse_file)?;
-
-    Ok(())
+    writer.finish()
 }
 
 fn main() {

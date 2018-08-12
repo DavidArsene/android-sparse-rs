@@ -1,293 +1,172 @@
-//! Sparse image reading and raw image encoding.
+//! Sparse image reading and encoding from raw images.
 
-use std::cell::RefCell;
-use std::fs::File as StdFile;
-use std::io::{ErrorKind, Read, Seek, SeekFrom};
-use std::rc::Rc;
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::{BufReader, ErrorKind};
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use crc::crc32;
-use crc::crc32::Hasher32;
 
-use constants::BLOCK_SIZE;
-use file::{Chunk, File};
+use block::Block;
 use headers::{ChunkHeader, ChunkType, FileHeader};
 use result::Result;
 
-/// Reads sparse files from sparse images.
+/// Reads sparse blocks from a sparse image.
+///
+/// Implements the `Iterator` trait, so sparse blocks can be read from
+/// a reader by iterating over it.
 pub struct Reader {
-    src: Rc<RefCell<StdFile>>,
-    crc: Option<crc32::Digest>,
+    src: BufReader<File>,
+    current_chunk: Option<ChunkHeader>,
+    current_fill: Option<[u8; 4]>,
+    remaining_chunks: u32,
+    finished: bool,
 }
 
 impl Reader {
-    /// Creates a new sparse file reader that reads from `src`.
-    pub fn new(src: StdFile) -> Self {
-        Self {
-            src: Rc::new(RefCell::new(src)),
-            crc: None,
-        }
+    /// Creates a new reader that reads from `file`.
+    pub fn new(file: File) -> Result<Self> {
+        let mut src = BufReader::new(file);
+        let header = FileHeader::read_from(&mut src)?;
+        Ok(Self {
+            src,
+            current_chunk: None,
+            current_fill: None,
+            remaining_chunks: header.total_chunks,
+            finished: false,
+        })
     }
 
-    /// Enables CRC32 checksum validation.
-    pub fn with_crc(mut self) -> Self {
-        self.crc = Some(crc32::Digest::new(crc32::IEEE));
-        self
-    }
+    fn next_block(&mut self) -> Result<Block> {
+        let mut chunk = match self.current_chunk.take() {
+            Some(c) => c,
+            None => ChunkHeader::read_from(&mut self.src)?,
+        };
 
-    /// Reads `sparse_file` from this reader's source.
-    pub fn read(mut self, mut sparse_file: &mut File) -> Result<()> {
-        let header = FileHeader::deserialize(&*self.src.borrow_mut())?;
-        for _ in 0..header.total_chunks {
-            self.read_chunk(&mut sparse_file)?;
-        }
+        let block = self.read_block(&mut chunk)?;
 
-        Ok(())
-    }
-
-    fn read_chunk(&mut self, mut spf: &mut File) -> Result<()> {
-        let header = ChunkHeader::deserialize(&*self.src.borrow_mut())?;
-        let num_blocks = header.chunk_size;
-
-        match header.chunk_type {
-            ChunkType::Raw => self.read_raw_chunk(&mut spf, num_blocks),
-            ChunkType::Fill => self.read_fill_chunk(&mut spf, num_blocks),
-            ChunkType::DontCare => self.read_dont_care_chunk(&mut spf, num_blocks),
-            ChunkType::Crc32 => self.read_crc32_chunk(&mut spf),
-        }
-    }
-
-    fn read_raw_chunk(&mut self, spf: &mut File, num_blocks: u32) -> Result<()> {
-        let offset = self.src.borrow_mut().seek(SeekFrom::Current(0))?;
-
-        if let Some(ref mut digest) = self.crc {
-            let mut block = [0; BLOCK_SIZE as usize];
-            for _ in 0..num_blocks {
-                self.src.borrow_mut().read_exact(&mut block)?;
-                digest.write(&block);
-            }
+        if chunk.chunk_size <= 1 {
+            self.remaining_chunks -= 1;
+            self.current_chunk = None;
+            self.current_fill = None;
         } else {
-            let size = i64::from(num_blocks * BLOCK_SIZE);
-            self.src.borrow_mut().seek(SeekFrom::Current(size))?;
+            chunk.chunk_size -= 1;
+            self.current_chunk = Some(chunk);
         }
 
-        let chunk = Chunk::Raw {
-            file: self.src.clone(),
-            offset,
-            num_blocks,
-        };
-        spf.add_chunk(chunk);
-
-        Ok(())
+        Ok(block)
     }
 
-    fn read_fill_chunk(&mut self, spf: &mut File, num_blocks: u32) -> Result<()> {
-        let fill = read4(&*self.src.borrow_mut())?;
-
-        if let Some(ref mut digest) = self.crc {
-            for _ in 0..(num_blocks * BLOCK_SIZE / 4) {
-                digest.write(&fill);
+    fn read_block(&mut self, chunk: &mut ChunkHeader) -> Result<Block> {
+        match chunk.chunk_type {
+            ChunkType::Raw => {
+                let mut buf = [0; Block::SIZE as usize];
+                self.src.read_exact(&mut buf)?;
+                Ok(Block::Raw(Box::new(buf)))
             }
-        }
-
-        let chunk = Chunk::Fill { fill, num_blocks };
-        spf.add_chunk(chunk);
-
-        Ok(())
-    }
-
-    fn read_dont_care_chunk(&mut self, spf: &mut File, num_blocks: u32) -> Result<()> {
-        if let Some(ref mut digest) = self.crc {
-            let block = [0; BLOCK_SIZE as usize];
-            for _ in 0..num_blocks {
-                digest.write(&block);
-            }
-        }
-
-        let chunk = Chunk::DontCare { num_blocks };
-        spf.add_chunk(chunk);
-
-        Ok(())
-    }
-
-    fn read_crc32_chunk(&mut self, spf: &mut File) -> Result<()> {
-        let crc = self.src.borrow_mut().read_u32::<LittleEndian>()?;
-        self.check_crc(crc)?;
-
-        let chunk = Chunk::Crc32 { crc };
-        spf.add_chunk(chunk);
-
-        Ok(())
-    }
-
-    fn check_crc(&self, crc: u32) -> Result<()> {
-        if let Some(ref digest) = self.crc {
-            if digest.sum32() != crc {
-                return Err("Checksum does not match".into());
-            }
-        }
-        Ok(())
-    }
-}
-
-/// Reads raw images and encodes them as sparse files.
-pub struct Encoder {
-    src: Rc<RefCell<StdFile>>,
-    chunk: Option<Chunk>,
-}
-
-impl Encoder {
-    /// Creates a new sparse file encoder that reads from `src`.
-    pub fn new(src: StdFile) -> Self {
-        Self {
-            src: Rc::new(RefCell::new(src)),
-            chunk: None,
-        }
-    }
-
-    /// Reads a raw image from this encoder's source and encodes it into
-    /// `sparse_file`.
-    pub fn read(mut self, mut sparse_file: &mut File) -> Result<()> {
-        let block_size = BLOCK_SIZE as usize;
-        let mut block = vec![0; block_size];
-        loop {
-            let bytes_read = read_all(&*self.src.borrow_mut(), &mut block)?;
-            self.read_block(&mut sparse_file, &block[..bytes_read])?;
-            if bytes_read != block_size {
-                break;
-            }
-        }
-
-        if let Some(last_chunk) = self.chunk.take() {
-            sparse_file.add_chunk(last_chunk);
-        }
-
-        Ok(())
-    }
-
-    fn read_block(&mut self, spf: &mut File, block: &[u8]) -> Result<()> {
-        if block.is_empty() {
-            return Ok(());
-        }
-
-        if let Some(chunk) = self.merge_block(block)? {
-            spf.add_chunk(chunk);
-        }
-
-        Ok(())
-    }
-
-    /// Tries to merge `block` into the current chunk. If this is not
-    /// possible, returns the current chunk and makes `block` the new current
-    /// chunk.
-    fn merge_block(&mut self, block: &[u8]) -> Result<Option<Chunk>> {
-        if is_sparse_block(block) {
-            let fill = read4(block)?;
-            if fill == [0; 4] {
-                Ok(self.merge_don_care_block())
-            } else {
-                Ok(self.merge_fill_block(fill))
-            }
-        } else {
-            self.merge_raw_block()
-        }
-    }
-
-    /// Tries to merge the current chunk with the following raw block.
-    fn merge_raw_block(&mut self) -> Result<Option<Chunk>> {
-        let (old, new) = match self.chunk.take() {
-            Some(Chunk::Raw {
-                file,
-                offset,
-                num_blocks,
-            }) => {
-                let merged = Chunk::Raw {
-                    file,
-                    offset,
-                    num_blocks: num_blocks + 1,
+            ChunkType::Fill => {
+                let value = match self.current_fill {
+                    Some(v) => v,
+                    None => {
+                        self.current_fill = Some(read4(&mut self.src)?);
+                        self.current_fill.unwrap()
+                    }
                 };
-                (None, merged)
+                Ok(Block::Fill(value))
             }
-            old_chunk => {
-                let mut file = self.src.clone();
-                let curr_off = file.borrow_mut().seek(SeekFrom::Current(0))?;
-                let new_chunk = Chunk::Raw {
-                    file,
-                    offset: curr_off - u64::from(BLOCK_SIZE),
-                    num_blocks: 1,
-                };
-                (old_chunk, new_chunk)
+            ChunkType::DontCare => Ok(Block::DontCare),
+            ChunkType::Crc32 => {
+                let checksum = self.src.read_u32::<LittleEndian>()?;
+                Ok(Block::Crc32(checksum))
             }
-        };
-        self.chunk = Some(new);
-        Ok(old)
-    }
-
-    /// Tries to merge the current chunk with the following block, filled with
-    /// `fill`.
-    fn merge_fill_block(&mut self, fill: [u8; 4]) -> Option<Chunk> {
-        let new_fill = fill;
-        let (old, new) = match self.chunk.take() {
-            Some(Chunk::Fill { fill, num_blocks }) if fill == new_fill => (
-                None,
-                Chunk::Fill {
-                    fill,
-                    num_blocks: num_blocks + 1,
-                },
-            ),
-            old_chunk => (
-                old_chunk,
-                Chunk::Fill {
-                    fill: new_fill,
-                    num_blocks: 1,
-                },
-            ),
-        };
-        self.chunk = Some(new);
-        old
-    }
-
-    // Tries to merge the current chunk with the following don't-care block.
-    fn merge_don_care_block(&mut self) -> Option<Chunk> {
-        let (old, new) = match self.chunk.take() {
-            Some(Chunk::DontCare { num_blocks }) => (
-                None,
-                Chunk::DontCare {
-                    num_blocks: num_blocks + 1,
-                },
-            ),
-            old_chunk => (old_chunk, Chunk::DontCare { num_blocks: 1 }),
-        };
-        self.chunk = Some(new);
-        old
-    }
-}
-
-/// Is `block` filled with the same 4-byte value?
-fn is_sparse_block(block: &[u8]) -> bool {
-    if block.len() != BLOCK_SIZE as usize {
-        return false;
-    }
-
-    let mut words = block.chunks(4);
-    let first = words.next().unwrap();
-    for word in words {
-        if word != first {
-            return false;
         }
     }
-
-    true
 }
 
-/// Reads 4 bytes from `r`.
+impl Iterator for Reader {
+    type Item = Result<Block>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
+
+        let result = self.next_block();
+        self.finished = result.is_err() || self.remaining_chunks == 0;
+        Some(result)
+    }
+}
+
 fn read4<R: Read>(mut r: R) -> Result<[u8; 4]> {
     let mut buf = [0; 4];
     r.read_exact(&mut buf)?;
     Ok(buf)
 }
 
-/// Fills `buf` from `r`, returns an error if not possible.
+/// Reads blocks from a raw image and encodes them into sparse blocks.
+///
+/// Implements the `Iterator` trait, so sparse blocks can be read from
+/// an encoder by iterating over it.
+pub struct Encoder {
+    src: File,
+    finished: bool,
+}
+
+impl Encoder {
+    /// Creates a new encoder that reads from `file`.
+    pub fn new(file: File) -> Result<Self> {
+        Ok(Self {
+            src: file,
+            finished: false,
+        })
+    }
+
+    fn read_block(&self) -> Result<Option<Block>> {
+        let mut buf = [0; Block::SIZE as usize];
+        let bytes_read = read_all(&self.src, &mut buf)?;
+
+        let block = match bytes_read {
+            0 => None,
+            _ => Some(self.encode_block(buf)),
+        };
+        Ok(block)
+    }
+
+    fn encode_block(&self, buf: [u8; Block::SIZE as usize]) -> Block {
+        if is_sparse(&buf) {
+            let value = read4(&buf[..]).unwrap();
+            if value == [0; 4] {
+                Block::DontCare
+            } else {
+                Block::Fill(value)
+            }
+        } else {
+            Block::Raw(Box::new(buf))
+        }
+    }
+}
+
+impl Iterator for Encoder {
+    type Item = Result<Block>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
+
+        match self.read_block() {
+            Ok(Some(c)) => Some(Ok(c)),
+            Ok(None) => {
+                self.finished = true;
+                None
+            }
+            Err(e) => {
+                self.finished = true;
+                Some(Err(e))
+            }
+        }
+    }
+}
+
 fn read_all<R: Read>(mut r: R, mut buf: &mut [u8]) -> Result<usize> {
     let buf_size = buf.len();
 
@@ -304,4 +183,10 @@ fn read_all<R: Read>(mut r: R, mut buf: &mut [u8]) -> Result<usize> {
     }
 
     Ok(buf_size - buf.len())
+}
+
+fn is_sparse(buf: &[u8]) -> bool {
+    let mut parts = buf.chunks(4);
+    let first = parts.next().unwrap();
+    parts.all(|p| p == first)
 }

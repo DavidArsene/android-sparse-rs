@@ -1,13 +1,9 @@
-//! Sparse file header parsing.
-
-use std::error::Error;
 use std::io::{Read, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use constants::{BLOCK_SIZE, CHUNK_HEADER_SIZE, FILE_HEADER_SIZE};
-use convert::{TryFrom, TryInto};
-use result::Result;
+use block::Block;
+use result::{Error, Result};
 
 const FILE_MAGIC: u32 = 0xed26_ff3a;
 const FILE_FORMAT_VERSION: (u16, u16) = (1, 0);
@@ -17,7 +13,6 @@ const CHUNK_MAGIC_FILL: u16 = 0xcac2;
 const CHUNK_MAGIC_DONT_CARE: u16 = 0xcac3;
 const CHUNK_MAGIC_CRC32: u16 = 0xcac4;
 
-/// A sparse file header.
 #[derive(Clone, Debug)]
 pub struct FileHeader {
     pub total_blocks: u32,
@@ -26,30 +21,40 @@ pub struct FileHeader {
 }
 
 impl FileHeader {
-    /// Reads and deserializes a sparse file header from `r`.
-    pub fn deserialize<R: Read>(mut r: R) -> Result<Self> {
+    pub const SIZE: u16 = 28;
+
+    pub fn read_from<R: Read>(mut r: R) -> Result<Self> {
         let magic = r.read_u32::<LittleEndian>()?;
         if magic != FILE_MAGIC {
-            return Err(format!("Invalid file magic: {:x}", magic).into());
+            return Err(Error::Parse(format!("Invalid file magic: {:x}", magic)));
         }
 
         let version = (r.read_u16::<LittleEndian>()?, r.read_u16::<LittleEndian>()?);
         if version != FILE_FORMAT_VERSION {
             let (major, minor) = version;
-            return Err(format!("Invalid file format version: {}.{}", major, minor).into());
+            return Err(Error::Parse(format!(
+                "Invalid file format version: {}.{}",
+                major, minor
+            )));
         }
 
         let file_header_size = r.read_u16::<LittleEndian>()?;
-        if file_header_size != FILE_HEADER_SIZE {
-            return Err(format!("Invalid file header size: {}", file_header_size).into());
+        if file_header_size != Self::SIZE {
+            return Err(Error::Parse(format!(
+                "Invalid file header size: {}",
+                file_header_size
+            )));
         }
         let chunk_header_size = r.read_u16::<LittleEndian>()?;
-        if chunk_header_size != CHUNK_HEADER_SIZE {
-            return Err(format!("Invalid chunk header size: {}", chunk_header_size).into());
+        if chunk_header_size != ChunkHeader::SIZE {
+            return Err(Error::Parse(format!(
+                "Invalid chunk header size: {}",
+                chunk_header_size
+            )));
         }
         let block_size = r.read_u32::<LittleEndian>()?;
-        if block_size != BLOCK_SIZE {
-            return Err(format!("Invalid block size: {}", block_size).into());
+        if block_size != Block::SIZE {
+            return Err(Error::Parse(format!("Invalid block size: {}", block_size)));
         }
 
         Ok(Self {
@@ -59,17 +64,17 @@ impl FileHeader {
         })
     }
 
-    /// Serializes this sparse file header into `w`.
-    pub fn serialize<W: Write>(&self, mut w: W) -> Result<()> {
+    /// Writes this sparse file header into `w`.
+    pub fn write_to<W: Write>(&self, mut w: W) -> Result<()> {
         w.write_u32::<LittleEndian>(FILE_MAGIC)?;
 
         let (maj_version, min_version) = FILE_FORMAT_VERSION;
         w.write_u16::<LittleEndian>(maj_version)?;
         w.write_u16::<LittleEndian>(min_version)?;
 
-        w.write_u16::<LittleEndian>(FILE_HEADER_SIZE)?;
-        w.write_u16::<LittleEndian>(CHUNK_HEADER_SIZE)?;
-        w.write_u32::<LittleEndian>(BLOCK_SIZE)?;
+        w.write_u16::<LittleEndian>(Self::SIZE)?;
+        w.write_u16::<LittleEndian>(ChunkHeader::SIZE)?;
+        w.write_u32::<LittleEndian>(Block::SIZE)?;
 
         w.write_u32::<LittleEndian>(self.total_blocks)?;
         w.write_u32::<LittleEndian>(self.total_chunks)?;
@@ -79,7 +84,35 @@ impl FileHeader {
     }
 }
 
-/// A sparse file chunk header.
+#[derive(Clone, Copy, Debug)]
+pub enum ChunkType {
+    Raw,
+    Fill,
+    DontCare,
+    Crc32,
+}
+
+impl ChunkType {
+    fn from_magic(magic: u16) -> Result<Self> {
+        match magic {
+            CHUNK_MAGIC_RAW => Ok(ChunkType::Raw),
+            CHUNK_MAGIC_FILL => Ok(ChunkType::Fill),
+            CHUNK_MAGIC_DONT_CARE => Ok(ChunkType::DontCare),
+            CHUNK_MAGIC_CRC32 => Ok(ChunkType::Crc32),
+            _ => Err(Error::Parse(format!("Invalid chunk magic: {}", magic))),
+        }
+    }
+
+    fn magic(self) -> u16 {
+        match self {
+            ChunkType::Raw => CHUNK_MAGIC_RAW,
+            ChunkType::Fill => CHUNK_MAGIC_FILL,
+            ChunkType::DontCare => CHUNK_MAGIC_DONT_CARE,
+            ChunkType::Crc32 => CHUNK_MAGIC_CRC32,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ChunkHeader {
     pub chunk_type: ChunkType,
@@ -88,9 +121,11 @@ pub struct ChunkHeader {
 }
 
 impl ChunkHeader {
-    /// Reads and deserializes a chunk header from `r`.
-    pub fn deserialize<R: Read>(mut r: R) -> Result<Self> {
-        let chunk_type = r.read_u16::<LittleEndian>()?.try_into()?;
+    pub const SIZE: u16 = 12;
+
+    pub fn read_from<R: Read>(mut r: R) -> Result<Self> {
+        let magic = r.read_u16::<LittleEndian>()?;
+        let chunk_type = ChunkType::from_magic(magic)?;
         r.read_u16::<LittleEndian>()?; // reserved1
 
         Ok(Self {
@@ -100,47 +135,13 @@ impl ChunkHeader {
         })
     }
 
-    /// Serializes this chunk header into `w`.
-    pub fn serialize<W: Write>(&self, mut w: W) -> Result<()> {
-        w.write_u16::<LittleEndian>(self.chunk_type.into())?;
+    pub fn write_to<W: Write>(&self, mut w: W) -> Result<()> {
+        w.write_u16::<LittleEndian>(self.chunk_type.magic())?;
         w.write_u16::<LittleEndian>(0)?; // reserved1
 
         w.write_u32::<LittleEndian>(self.chunk_size)?;
         w.write_u32::<LittleEndian>(self.total_size)?;
 
         Ok(())
-    }
-}
-
-/// The type of a sparse file chunk.
-#[derive(Clone, Copy, Debug)]
-pub enum ChunkType {
-    Raw,
-    Fill,
-    DontCare,
-    Crc32,
-}
-
-impl From<ChunkType> for u16 {
-    fn from(original: ChunkType) -> Self {
-        match original {
-            ChunkType::Raw => CHUNK_MAGIC_RAW,
-            ChunkType::Fill => CHUNK_MAGIC_FILL,
-            ChunkType::DontCare => CHUNK_MAGIC_DONT_CARE,
-            ChunkType::Crc32 => CHUNK_MAGIC_CRC32,
-        }
-    }
-}
-
-impl TryFrom<u16> for ChunkType {
-    type Error = Box<Error>;
-    fn try_from(original: u16) -> Result<Self> {
-        match original {
-            CHUNK_MAGIC_RAW => Ok(ChunkType::Raw),
-            CHUNK_MAGIC_FILL => Ok(ChunkType::Fill),
-            CHUNK_MAGIC_DONT_CARE => Ok(ChunkType::DontCare),
-            CHUNK_MAGIC_CRC32 => Ok(ChunkType::Crc32),
-            n => Err(format!("Invalid chunk magic: {}", n).into()),
-        }
     }
 }

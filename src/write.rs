@@ -1,223 +1,189 @@
 //! Sparse image writing and decoding to raw images.
 
-use std::fs::File as StdFile;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::{BufWriter, SeekFrom};
 
 use byteorder::{LittleEndian, WriteBytesExt};
-use crc::crc32;
-use crc::crc32::Hasher32;
 
-use constants::BLOCK_SIZE;
-use file::{Chunk, File};
+use block::Block;
 use headers::{ChunkHeader, ChunkType, FileHeader};
 use result::Result;
 
-/// Writes sparse files to sparse images.
-pub struct Writer<W> {
-    dst: W,
-    crc: Option<crc32::Digest>,
+/// Writes sparse blocks to a sparse image.
+pub struct Writer {
+    dst: BufWriter<File>,
+    current_chunk: Option<ChunkHeader>,
+    current_fill: Option<[u8; 4]>,
+    num_blocks: u32,
+    num_chunks: u32,
 }
 
-impl<W: Write> Writer<W> {
-    /// Creates a new sparse file writer that writes to `dst`.
-    pub fn new(dst: W) -> Self {
-        Self { dst, crc: None }
+impl Writer {
+    /// Creates a new writer that writes to `file`.
+    pub fn new(file: File) -> Result<Self> {
+        let mut dst = BufWriter::new(file);
+        // We cannot write the file header until we know the total number of
+        // blocks and chunks. So we skip it here and write it at the end in
+        // `finish`.
+        dst.seek(SeekFrom::Current(i64::from(FileHeader::SIZE)))?;
+
+        Ok(Self {
+            dst,
+            current_chunk: None,
+            current_fill: None,
+            num_blocks: 0,
+            num_chunks: 0,
+        })
     }
 
-    /// Enables CRC32 checksum writing.
-    pub fn with_crc(mut self) -> Self {
-        self.crc = Some(crc32::Digest::new(crc32::IEEE));
-        self
-    }
-
-    /// Writes `sparse_file` to this writer's destination.
-    pub fn write(mut self, sparse_file: &File) -> Result<()> {
-        self.write_file_header(sparse_file)?;
-
-        for chunk in sparse_file.chunk_iter() {
-            self.write_chunk(chunk)?;
+    /// Writes a sparse block to this writer.
+    ///
+    /// The sparse block is converted into the sparse file format and
+    /// written to this decoder's destination.
+    pub fn write_block(&mut self, block: &Block) -> Result<()> {
+        if !self.can_merge(block) {
+            self.finish_chunk()?;
+            self.start_chunk(block)?;
         }
 
-        self.write_end_chunk()
+        let chunk = self.current_chunk.as_mut().unwrap();
+
+        match block {
+            Block::Raw(buf) => {
+                self.dst.write_all(&**buf)?;
+                chunk.total_size += Block::SIZE;
+            }
+            Block::Fill(value) => if self.current_fill.is_none() {
+                self.dst.write_all(value)?;
+                self.current_fill = Some(*value);
+            },
+            Block::DontCare => (),
+            Block::Crc32(checksum) => self.dst.write_u32::<LittleEndian>(*checksum)?,
+        }
+
+        chunk.chunk_size += 1;
+        Ok(())
     }
 
-    fn write_file_header(&mut self, spf: &File) -> Result<()> {
-        let mut total_chunks = spf.num_chunks();
-        if self.crc.is_some() {
-            total_chunks += 1; // count extra Crc32 chunk
-        }
+    /// Finish writing the sparse image and flush any buffered data.
+    pub fn finish(mut self) -> Result<()> {
+        self.finish_chunk()?;
 
         // Like libsparse, we always set the checksum value in the file header
         // to 0. If checksum writing is enabled, we append a Crc32 chunk at
         // the end of the file instead.
         let image_checksum = 0;
-
         let header = FileHeader {
-            total_blocks: spf.num_blocks(),
-            total_chunks,
+            total_blocks: self.num_blocks,
+            total_chunks: self.num_chunks,
             image_checksum,
         };
-        header.serialize(&mut self.dst)
+
+        self.dst.seek(SeekFrom::Start(0))?;
+        header.write_to(&mut self.dst)?;
+
+        self.dst.flush()?;
+        Ok(())
     }
 
-    fn write_chunk(&mut self, chunk: &Chunk) -> Result<()> {
-        self.write_chunk_header(chunk)?;
+    fn can_merge(&self, block: &Block) -> bool {
+        let chunk = match self.current_chunk.as_ref() {
+            Some(c) => c,
+            None => return false,
+        };
 
-        match *chunk {
-            Chunk::Raw {
-                ref file,
-                offset,
-                num_blocks,
-            } => self.write_raw_chunk(&*file.borrow_mut(), offset, num_blocks),
-            Chunk::Fill { fill, num_blocks } => self.write_fill_chunk(fill, num_blocks),
-            Chunk::DontCare { num_blocks } => self.write_dont_care_chunk(num_blocks),
-            Chunk::Crc32 { crc } => self.write_crc32_chunk(crc),
+        match (chunk.chunk_type, block) {
+            (ChunkType::Raw, Block::Raw(_)) | (ChunkType::DontCare, Block::DontCare) => true,
+            (ChunkType::Fill, Block::Fill(value)) => self.current_fill.unwrap() == *value,
+            _ => false,
         }
     }
 
-    fn write_chunk_header(&mut self, chunk: &Chunk) -> Result<()> {
-        let chunk_type = match chunk {
-            Chunk::Raw { .. } => ChunkType::Raw,
-            Chunk::Fill { .. } => ChunkType::Fill,
-            Chunk::DontCare { .. } => ChunkType::DontCare,
-            Chunk::Crc32 { .. } => ChunkType::Crc32,
+    fn start_chunk(&mut self, block: &Block) -> Result<()> {
+        assert!(self.current_chunk.is_none());
+
+        let (chunk_type, init_size) = match block {
+            Block::Raw(_) => (ChunkType::Raw, 0),
+            Block::Fill(_) => (ChunkType::Fill, 4),
+            Block::DontCare => (ChunkType::DontCare, 0),
+            Block::Crc32(_) => (ChunkType::Crc32, 4),
         };
-        let header = ChunkHeader {
+
+        let chunk = ChunkHeader {
             chunk_type,
-            chunk_size: chunk.num_blocks(),
-            total_size: chunk.sparse_size(),
-        };
-        header.serialize(&mut self.dst)
-    }
-
-    fn write_raw_chunk(&mut self, file: &StdFile, offset: u64, num_blocks: u32) -> Result<()> {
-        let mut file = file.try_clone()?;
-        file.seek(SeekFrom::Start(offset))?;
-
-        if let Some(ref mut digest) = self.crc {
-            let mut block = [0; BLOCK_SIZE as usize];
-            for _ in 0..num_blocks {
-                file.read_exact(&mut block)?;
-                digest.write(&block);
-                self.dst.write_all(&block)?;
-            }
-        } else {
-            copy_blocks(&mut file, &mut self.dst, num_blocks)?;
-        }
-
-        Ok(())
-    }
-
-    fn write_fill_chunk(&mut self, fill: [u8; 4], num_blocks: u32) -> Result<()> {
-        if let Some(ref mut digest) = self.crc {
-            for _ in 0..(num_blocks * BLOCK_SIZE / 4) {
-                digest.write(&fill);
-            }
-        }
-
-        self.dst.write_all(&fill).map_err(|e| e.into())
-    }
-
-    fn write_dont_care_chunk(&mut self, num_blocks: u32) -> Result<()> {
-        if let Some(ref mut digest) = self.crc {
-            let block = [0; BLOCK_SIZE as usize];
-            for _ in 0..num_blocks {
-                digest.write(&block);
-            }
-        }
-
-        Ok(())
-    }
-
-    fn write_crc32_chunk(&mut self, crc: u32) -> Result<()> {
-        self.dst
-            .write_u32::<LittleEndian>(crc)
-            .map_err(|e| e.into())
-    }
-
-    fn write_end_chunk(&mut self) -> Result<()> {
-        let crc = self.crc.take();
-        if let Some(digest) = crc {
-            let chunk = Chunk::Crc32 {
-                crc: digest.sum32(),
-            };
-            self.write_chunk(&chunk)
-        } else {
-            Ok(())
-        }
-    }
-}
-
-/// Decodes sparse files and writes them as raw images.
-pub struct Decoder<W> {
-    dst: W,
-}
-
-impl<W: Write> Decoder<W> {
-    /// Creates a new sparse file decoder that writes to `dst`.
-    pub fn new(dst: W) -> Self {
-        Self { dst }
-    }
-
-    /// Decodes `sparse_file` and write the raw image to this decoder's
-    /// destination.
-    pub fn write(mut self, sparse_file: &File) -> Result<()> {
-        for chunk in sparse_file.chunk_iter() {
-            self.write_chunk(chunk)?;
-        }
-
-        Ok(())
-    }
-
-    fn write_chunk(&mut self, chunk: &Chunk) -> Result<()> {
-        match *chunk {
-            Chunk::Raw {
-                ref file,
-                offset,
-                num_blocks,
-            } => copy_from_file(&*file.borrow(), &mut self.dst, offset, num_blocks)?,
-
-            Chunk::Fill { fill, num_blocks } => {
-                let block = fill
-                    .iter()
-                    .cycle()
-                    .cloned()
-                    .take(BLOCK_SIZE as usize)
-                    .collect::<Vec<_>>();
-                for _ in 0..num_blocks {
-                    self.dst.write_all(&block)?;
-                }
-            }
-
-            Chunk::DontCare { num_blocks } => {
-                let block = [0; BLOCK_SIZE as usize];
-                for _ in 0..num_blocks {
-                    self.dst.write_all(&block)?;
-                }
-            }
-
-            Chunk::Crc32 { .. } => (),
+            chunk_size: 0,
+            total_size: init_size + u32::from(ChunkHeader::SIZE),
         };
 
+        // We cannot write the chunk header until we know the total number of
+        // blocks in the chunk. So we skip it here and write it later in
+        // `finish_chunk`.
+        let header_size = i64::from(ChunkHeader::SIZE);
+        self.dst.seek(SeekFrom::Current(header_size))?;
+
+        self.current_chunk = Some(chunk);
+
+        Ok(())
+    }
+
+    fn finish_chunk(&mut self) -> Result<()> {
+        let chunk = match self.current_chunk.take() {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        let pos = self.dst.seek(SeekFrom::Current(0))?;
+        let header_off = i64::from(chunk.total_size);
+        self.dst.seek(SeekFrom::Current(-header_off))?;
+        chunk.write_to(&mut self.dst)?;
+        self.dst.seek(SeekFrom::Start(pos))?;
+
+        self.current_fill = None;
+        self.num_chunks += 1;
+        self.num_blocks += chunk.chunk_size;
+
         Ok(())
     }
 }
 
-/// Starting from `offset`, reads `num_blocks` blocks from `file` and copies
-/// them to `writer`.
-fn copy_from_file<W: Write>(file: &StdFile, writer: W, offset: u64, num_blocks: u32) -> Result<()> {
-    let mut file = file.try_clone()?;
-    file.seek(SeekFrom::Start(offset))?;
-    copy_blocks(&mut file, writer, num_blocks)
+/// Decodes sparse blocks and writes them to a raw image.
+pub struct Decoder {
+    dst: BufWriter<File>,
 }
 
-/// Copies `num_blocks` blocks from `r` to `w`.
-fn copy_blocks<R: Read, W: Write>(mut r: R, mut w: W, num_blocks: u32) -> Result<()> {
-    let mut block = [0; BLOCK_SIZE as usize];
-    for _ in 0..num_blocks {
-        r.read_exact(&mut block)?;
-        w.write_all(&block)?;
+impl Decoder {
+    /// Creates a new decoder that writes to `file`.
+    pub fn new(file: File) -> Result<Self> {
+        let dst = BufWriter::new(file);
+        Ok(Self { dst })
     }
 
-    Ok(())
+    /// Writes a sparse block to this decoder.
+    ///
+    /// The sparse block is decoded into its raw form and written to
+    /// this decoder's destination.
+    pub fn write_block(&mut self, block: &Block) -> Result<()> {
+        match block {
+            Block::Raw(buf) => self.dst.write_all(&**buf)?,
+            Block::Fill(value) => {
+                let count = Block::SIZE as usize / 4;
+                for _ in 0..count {
+                    self.dst.write_all(value)?;
+                }
+            }
+            Block::DontCare => {
+                let buf = [0; Block::SIZE as usize];
+                self.dst.write_all(&buf)?;
+            }
+            Block::Crc32(_) => (),
+        }
+        Ok(())
+    }
+
+    /// Finish writing the raw image and flush any buffered data.
+    pub fn finish(mut self) -> Result<()> {
+        self.dst.flush()?;
+        Ok(())
+    }
 }
