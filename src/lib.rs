@@ -20,6 +20,7 @@ pub mod read;
 pub mod result;
 pub mod write;
 
+mod ext;
 mod headers;
 
 pub use block::Block;

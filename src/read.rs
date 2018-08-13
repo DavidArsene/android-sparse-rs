@@ -8,7 +8,8 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use crc::crc32;
 use crc::crc32::Hasher32;
 
-use block::{Block, WriteBlock};
+use block::Block;
+use ext::WriteBlock;
 use headers::{ChunkHeader, ChunkType, FileHeader};
 use result::{Error, Result};
 
@@ -92,7 +93,7 @@ impl Reader {
                 };
                 Ok(Block::Fill(value))
             }
-            ChunkType::DontCare => Ok(Block::DontCare),
+            ChunkType::DontCare => Ok(Block::Skip),
             ChunkType::Crc32 => {
                 let checksum = self.src.read_u32::<LittleEndian>()?;
                 self.verify_checksum(checksum)?;
@@ -165,7 +166,7 @@ impl Encoder {
         if is_sparse(&buf) {
             let value = read4(&buf[..]).unwrap();
             if value == [0; 4] {
-                Block::DontCare
+                Block::Skip
             } else {
                 Block::Fill(value)
             }

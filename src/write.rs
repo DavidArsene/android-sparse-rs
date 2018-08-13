@@ -1,6 +1,7 @@
 //! Sparse image writing and decoding to raw images.
 
 use std::fs::File;
+use std::io;
 use std::io::prelude::*;
 use std::io::{BufWriter, SeekFrom};
 
@@ -8,7 +9,8 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use crc::crc32;
 use crc::crc32::Hasher32;
 
-use block::{Block, WriteBlock};
+use block::Block;
+use ext::{Tell, WriteBlock};
 use headers::{ChunkHeader, ChunkType, FileHeader};
 use result::Result;
 
@@ -74,7 +76,7 @@ impl Writer {
                 self.dst.write_all(value)?;
                 self.current_fill = Some(*value);
             },
-            Block::DontCare => (),
+            Block::Skip => (),
             Block::Crc32(checksum) => self.dst.write_u32::<LittleEndian>(*checksum)?,
         }
 
@@ -115,7 +117,7 @@ impl Writer {
         };
 
         match (chunk.chunk_type, block) {
-            (ChunkType::Raw, Block::Raw(_)) | (ChunkType::DontCare, Block::DontCare) => true,
+            (ChunkType::Raw, Block::Raw(_)) | (ChunkType::DontCare, Block::Skip) => true,
             (ChunkType::Fill, Block::Fill(value)) => self.current_fill.unwrap() == *value,
             _ => false,
         }
@@ -127,7 +129,7 @@ impl Writer {
         let (chunk_type, init_size) = match block {
             Block::Raw(_) => (ChunkType::Raw, 0),
             Block::Fill(_) => (ChunkType::Fill, 4),
-            Block::DontCare => (ChunkType::DontCare, 0),
+            Block::Skip => (ChunkType::DontCare, 0),
             Block::Crc32(_) => (ChunkType::Crc32, 4),
         };
 
@@ -154,7 +156,7 @@ impl Writer {
             None => return Ok(()),
         };
 
-        let pos = self.dst.seek(SeekFrom::Current(0))?;
+        let pos = self.dst.tell()?;
         let header_off = i64::from(chunk.total_size);
         self.dst.seek(SeekFrom::Current(-header_off))?;
         chunk.write_to(&mut self.dst)?;
@@ -203,9 +205,9 @@ impl Decoder {
                     self.dst.write_all(value)?;
                 }
             }
-            Block::DontCare => {
-                let buf = [0; Block::SIZE as usize];
-                self.dst.write_all(&buf)?;
+            Block::Skip => {
+                let offset = i64::from(Block::SIZE);
+                self.dst.seek(SeekFrom::Current(offset))?;
             }
             Block::Crc32(_) => (),
         }
@@ -213,8 +215,14 @@ impl Decoder {
     }
 
     /// Finish writing the raw image and flush any buffered data.
-    pub fn finish(mut self) -> Result<()> {
-        self.dst.flush()?;
+    pub fn finish(self) -> Result<()> {
+        // Ensure the file has the correct size if the last block was a
+        // skip block.
+        let mut file = self.dst.into_inner().map_err(io::Error::from)?;
+        let offset = file.tell()?;
+        file.set_len(offset)?;
+
+        file.flush()?;
         Ok(())
     }
 }
