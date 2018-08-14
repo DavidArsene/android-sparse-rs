@@ -77,7 +77,11 @@ impl Writer {
                 self.current_fill = Some(*value);
             },
             Block::Skip => (),
-            Block::Crc32(checksum) => self.dst.write_u32::<LittleEndian>(*checksum)?,
+            Block::Crc32(checksum) => {
+                self.dst.write_u32::<LittleEndian>(*checksum)?;
+                // CRC chunk size must remain 0, so drop out here already.
+                return Ok(());
+            }
         }
 
         if let Some(digest) = self.crc.as_mut() {
