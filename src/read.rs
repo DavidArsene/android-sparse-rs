@@ -3,6 +3,7 @@
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{BufReader, ErrorKind};
+use std::{mem, slice};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use crc::crc32;
@@ -12,6 +13,9 @@ use block::Block;
 use ext::WriteBlock;
 use headers::{ChunkHeader, ChunkType, FileHeader};
 use result::{Error, Result};
+
+const BLOCK_SIZE: usize = Block::SIZE as usize;
+const U32_BLOCK_SIZE: usize = BLOCK_SIZE / mem::size_of::<u32>();
 
 /// Reads sparse blocks from a sparse image.
 ///
@@ -79,7 +83,7 @@ impl Reader {
     fn read_block(&mut self, chunk: &mut ChunkHeader) -> Result<Block> {
         match chunk.chunk_type {
             ChunkType::Raw => {
-                let mut buf = [0; Block::SIZE as usize];
+                let mut buf = [0; BLOCK_SIZE];
                 self.src.read_exact(&mut buf)?;
                 Ok(Block::Raw(Box::new(buf)))
             }
@@ -133,6 +137,40 @@ fn read4<R: Read>(mut r: R) -> Result<[u8; 4]> {
     Ok(buf)
 }
 
+/// Wraps a block-sized buffer that is guaranteed to be 4-byte aligned.
+///
+/// This allows it to give out `&[u8]` and `&[u32]` views of the
+/// buffer. We need both kinds of views, since efficient checking for
+/// sparse blocks requires `&[u32]` while reading and writing only
+/// works on `&[u8]`.
+struct AlignedBuf([u32; U32_BLOCK_SIZE]);
+
+impl AlignedBuf {
+    fn new() -> Self {
+        AlignedBuf([0; U32_BLOCK_SIZE])
+    }
+
+    fn as_ref(&self) -> &[u8] {
+        let ptr = self.0.as_ptr() as *const u8;
+        let len = self.0.len() * mem::size_of::<u32>();
+        unsafe { slice::from_raw_parts(ptr, len) }
+    }
+
+    fn as_mut(&mut self) -> &mut [u8] {
+        let ptr = self.0.as_ptr() as *mut u8;
+        let len = self.0.len() * mem::size_of::<u32>();
+        unsafe { slice::from_raw_parts_mut(ptr, len) }
+    }
+
+    fn as_u32_ref(&self) -> &[u32] {
+        &self.0
+    }
+
+    fn into_inner(self) -> [u8; BLOCK_SIZE] {
+        unsafe { mem::transmute::<[u32; U32_BLOCK_SIZE], [u8; BLOCK_SIZE]>(self.0) }
+    }
+}
+
 /// Reads blocks from a raw image and encodes them into sparse blocks.
 ///
 /// Implements the `Iterator` trait, so sparse blocks can be read from
@@ -152,8 +190,8 @@ impl Encoder {
     }
 
     fn read_block(&self) -> Result<Option<Block>> {
-        let mut buf = [0; Block::SIZE as usize];
-        let bytes_read = read_all(&self.src, &mut buf)?;
+        let mut buf = AlignedBuf::new();
+        let bytes_read = read_all(&self.src, buf.as_mut())?;
 
         let block = match bytes_read {
             0 => None,
@@ -162,16 +200,16 @@ impl Encoder {
         Ok(block)
     }
 
-    fn encode_block(&self, buf: [u8; Block::SIZE as usize]) -> Block {
-        if is_sparse(&buf) {
-            let value = read4(&buf[..]).unwrap();
+    fn encode_block(&self, buf: AlignedBuf) -> Block {
+        if is_sparse(buf.as_u32_ref()) {
+            let value = read4(buf.as_ref()).unwrap();
             if value == [0; 4] {
                 Block::Skip
             } else {
                 Block::Fill(value)
             }
         } else {
-            Block::Raw(Box::new(buf))
+            Block::Raw(Box::new(buf.into_inner()))
         }
     }
 }
@@ -216,8 +254,8 @@ fn read_all<R: Read>(mut r: R, mut buf: &mut [u8]) -> Result<usize> {
     Ok(buf_size - buf.len())
 }
 
-fn is_sparse(buf: &[u8]) -> bool {
-    let mut parts = buf.chunks(4);
+fn is_sparse(buf: &[u32]) -> bool {
+    let mut parts = buf.iter();
     let first = parts.next().unwrap();
     parts.all(|p| p == first)
 }
