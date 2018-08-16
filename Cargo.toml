@@ -14,5 +14,8 @@ byteorder = "1"
 clap = "2"
 crc = "1"
 
+[dev-dependencies]
+tempfile = "3"
+
 [badges]
 gitlab = { repository = "ra_kete/android-sparse-rs" }

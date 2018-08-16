@@ -15,6 +15,9 @@
 extern crate byteorder;
 extern crate crc;
 
+#[cfg(test)]
+extern crate tempfile;
+
 pub mod block;
 pub mod read;
 pub mod result;

@@ -38,3 +38,46 @@ impl<T: Seek> Tell for T {
         self.seek(SeekFrom::Current(0))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tempfile::tempfile;
+
+    fn block_crc(block: &Block) -> u32 {
+        let mut digest = crc32::Digest::new(crc32::IEEE);
+        digest.write_block(block);
+        digest.sum32()
+    }
+
+    #[test]
+    fn test_crc_write_raw_block() {
+        let block = Block::Raw(Box::new([b'A'; Block::SIZE as usize]));
+        assert_eq!(block_crc(&block), 0xfea63440);
+    }
+
+    #[test]
+    fn test_crc_write_fill_block() {
+        let block = Block::Fill([b'A'; 4]);
+        assert_eq!(block_crc(&block), 0xfea63440);
+    }
+
+    #[test]
+    fn test_crc_write_skip_block() {
+        let block = Block::Skip;
+        assert_eq!(block_crc(&block), 0xc71c0011);
+    }
+
+    #[test]
+    fn test_crc_write_crc32_block() {
+        let block = Block::Crc32(0x12345678);
+        assert_eq!(block_crc(&block), 0);
+    }
+
+    #[test]
+    fn test_tell() {
+        let mut tmp = tempfile().unwrap();
+        writeln!(tmp, "hello world").unwrap();
+        assert_eq!(tmp.tell().unwrap(), 12);
+    }
+}
