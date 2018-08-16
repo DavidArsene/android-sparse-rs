@@ -13,7 +13,7 @@ const CHUNK_MAGIC_FILL: u16 = 0xcac2;
 const CHUNK_MAGIC_DONT_CARE: u16 = 0xcac3;
 const CHUNK_MAGIC_CRC32: u16 = 0xcac4;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FileHeader {
     pub total_blocks: u32,
     pub total_chunks: u32,
@@ -84,7 +84,7 @@ impl FileHeader {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChunkType {
     Raw,
     Fill,
@@ -113,7 +113,7 @@ impl ChunkType {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ChunkHeader {
     pub chunk_type: ChunkType,
     pub chunk_size: u32,
@@ -143,5 +143,57 @@ impl ChunkHeader {
         w.write_u32::<LittleEndian>(self.total_size)?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const FILE_HEADER_BYTES: &[u8] = &[
+        0x3a, 0xff, 0x26, 0xed, 0x01, 0x00, 0x00, 0x00, 0x1c, 0x00, 0x0c, 0x00, 0x00, 0x10, 0x00,
+        0x00, 0x00, 0x00, 0x04, 0x00, 0x96, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
+
+    const FILE_HEADER: FileHeader = FileHeader {
+        total_blocks: 262144,
+        total_chunks: 1430,
+        image_checksum: 0,
+    };
+
+    const CHUNK_HEADER_BYTES: &[u8] = &[
+        0xc1, 0xca, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x0c, 0x10, 0x00, 0x00,
+    ];
+
+    const CHUNK_HEADER: ChunkHeader = ChunkHeader {
+        chunk_type: ChunkType::Raw,
+        chunk_size: 1,
+        total_size: 4108,
+    };
+
+    #[test]
+    fn test_read_file_header() {
+        let header = FileHeader::read_from(FILE_HEADER_BYTES).unwrap();
+        assert_eq!(header, FILE_HEADER);
+    }
+
+    #[test]
+    fn test_write_file_header() {
+        let mut bytes = Vec::new();
+        FILE_HEADER.write_to(&mut bytes).unwrap();
+        assert_eq!(&bytes[..], FILE_HEADER_BYTES);
+    }
+
+    #[test]
+    fn test_read_chunk_header() {
+        let header = ChunkHeader::read_from(CHUNK_HEADER_BYTES).unwrap();
+        assert_eq!(header, CHUNK_HEADER);
+    }
+
+    #[test]
+    fn test_write_chunk_header() {
+        let mut bytes = Vec::new();
+        CHUNK_HEADER.write_to(&mut bytes).unwrap();
+        assert_eq!(&bytes[..], CHUNK_HEADER_BYTES);
     }
 }
