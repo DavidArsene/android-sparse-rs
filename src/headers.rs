@@ -172,26 +172,26 @@ mod test {
     };
 
     #[test]
-    fn test_read_file_header() {
+    fn read_file_header() {
         let header = FileHeader::read_from(FILE_HEADER_BYTES).unwrap();
         assert_eq!(header, FILE_HEADER);
     }
 
     #[test]
-    fn test_write_file_header() {
+    fn write_file_header() {
         let mut bytes = Vec::new();
         FILE_HEADER.write_to(&mut bytes).unwrap();
         assert_eq!(&bytes[..], FILE_HEADER_BYTES);
     }
 
     #[test]
-    fn test_read_chunk_header() {
+    fn read_chunk_header() {
         let header = ChunkHeader::read_from(CHUNK_HEADER_BYTES).unwrap();
         assert_eq!(header, CHUNK_HEADER);
     }
 
     #[test]
-    fn test_write_chunk_header() {
+    fn write_chunk_header() {
         let mut bytes = Vec::new();
         CHUNK_HEADER.write_to(&mut bytes).unwrap();
         assert_eq!(&bytes[..], CHUNK_HEADER_BYTES);
