@@ -1,13 +1,11 @@
 //! Sparse image reading and encoding from raw images.
 
 use std::fs::File;
-use std::io::prelude::*;
-use std::io::{BufReader, ErrorKind};
+use std::io::{prelude::*, BufReader, ErrorKind};
 use std::{mem, slice};
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use crc::crc32;
-use crc::crc32::Hasher32;
+use crc::crc32::{self, Hasher32};
 
 use block::Block;
 use ext::WriteBlock;

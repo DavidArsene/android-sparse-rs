@@ -1,11 +1,8 @@
 //! Extensions for foreign types.
 
-use std::io;
-use std::io::prelude::*;
-use std::io::SeekFrom;
+use std::io::{self, prelude::*, SeekFrom};
 
-use crc::crc32;
-use crc::crc32::Hasher32;
+use crc::crc32::{self, Hasher32};
 
 use block::Block;
 

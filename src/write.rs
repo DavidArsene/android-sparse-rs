@@ -1,13 +1,10 @@
 //! Sparse image writing and decoding to raw images.
 
 use std::fs::File;
-use std::io;
-use std::io::prelude::*;
-use std::io::{BufWriter, SeekFrom};
+use std::io::{self, prelude::*, BufWriter, SeekFrom};
 
 use byteorder::{LittleEndian, WriteBytesExt};
-use crc::crc32;
-use crc::crc32::Hasher32;
+use crc::crc32::{self, Hasher32};
 
 use block::Block;
 use ext::{Tell, WriteBlock};
