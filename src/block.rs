@@ -14,5 +14,5 @@ pub enum Block {
 
 impl Block {
     /// The size of a sparse file block.
-    pub const SIZE: u32 = 4096;
+    pub(crate) const SIZE: u32 = 4096;
 }

@@ -14,16 +14,16 @@ const CHUNK_MAGIC_DONT_CARE: u16 = 0xcac3;
 const CHUNK_MAGIC_CRC32: u16 = 0xcac4;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FileHeader {
-    pub total_blocks: u32,
-    pub total_chunks: u32,
-    pub image_checksum: u32,
+pub(crate) struct FileHeader {
+    pub(crate) total_blocks: u32,
+    pub(crate) total_chunks: u32,
+    pub(crate) image_checksum: u32,
 }
 
 impl FileHeader {
-    pub const SIZE: u16 = 28;
+    pub(crate) const SIZE: u16 = 28;
 
-    pub fn read_from<R: Read>(mut r: R) -> Result<Self> {
+    pub(crate) fn read_from<R: Read>(mut r: R) -> Result<Self> {
         let magic = r.read_u32::<LittleEndian>()?;
         if magic != FILE_MAGIC {
             return Err(Error::Parse(format!("Invalid file magic: {:x}", magic)));
@@ -65,7 +65,7 @@ impl FileHeader {
     }
 
     /// Writes this sparse file header into `w`.
-    pub fn write_to<W: Write>(&self, mut w: W) -> Result<()> {
+    pub(crate) fn write_to<W: Write>(&self, mut w: W) -> Result<()> {
         w.write_u32::<LittleEndian>(FILE_MAGIC)?;
 
         let (maj_version, min_version) = FILE_FORMAT_VERSION;
@@ -85,7 +85,7 @@ impl FileHeader {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ChunkType {
+pub(crate) enum ChunkType {
     Raw,
     Fill,
     DontCare,
@@ -114,16 +114,16 @@ impl ChunkType {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ChunkHeader {
-    pub chunk_type: ChunkType,
-    pub chunk_size: u32,
-    pub total_size: u32,
+pub(crate) struct ChunkHeader {
+    pub(crate) chunk_type: ChunkType,
+    pub(crate) chunk_size: u32,
+    pub(crate) total_size: u32,
 }
 
 impl ChunkHeader {
-    pub const SIZE: u16 = 12;
+    pub(crate) const SIZE: u16 = 12;
 
-    pub fn read_from<R: Read>(mut r: R) -> Result<Self> {
+    pub(crate) fn read_from<R: Read>(mut r: R) -> Result<Self> {
         let magic = r.read_u16::<LittleEndian>()?;
         let chunk_type = ChunkType::from_magic(magic)?;
         r.read_u16::<LittleEndian>()?; // reserved1
@@ -135,7 +135,7 @@ impl ChunkHeader {
         })
     }
 
-    pub fn write_to<W: Write>(&self, mut w: W) -> Result<()> {
+    pub(crate) fn write_to<W: Write>(&self, mut w: W) -> Result<()> {
         w.write_u16::<LittleEndian>(self.chunk_type.magic())?;
         w.write_u16::<LittleEndian>(0)?; // reserved1
 

@@ -7,7 +7,7 @@ use crc::crc32::{self, Hasher32};
 use block::Block;
 
 /// Enables writing sparse blocks to `crc::crc32::Digest`s.
-pub trait WriteBlock {
+pub(crate) trait WriteBlock {
     fn write_block(&mut self, block: &Block);
 }
 
@@ -26,7 +26,7 @@ impl WriteBlock for crc32::Digest {
 
 /// Enables conveniently getting the current offset of anything that
 /// implements `Seek`.
-pub trait Tell {
+pub(crate) trait Tell {
     fn tell(&mut self) -> io::Result<u64>;
 }
 
