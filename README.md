@@ -61,6 +61,11 @@ Decoding a sparse image to a raw image:
 
     $ simg2img <sparse_image> <raw_image>
 
+It's also possible to decode multiple sparse images to a single raw image
+by specifying them separated by commas:
+
+    $ simg2img <sparse_image>,<sparse_image>,... <raw_image>
+
 The `-c`/`--crc` flag makes `simg2img` check the checksums included in the
 sparse image. Decoding is aborted if they don't match.
 

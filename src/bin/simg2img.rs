@@ -9,11 +9,21 @@ use clap::{App, Arg, ArgMatches};
 
 fn parse_args<'a>() -> ArgMatches<'a> {
     App::new("simg2img")
-        .about("Decode a sparse file to a raw file")
+        .about("Decode one or more sparse images to a raw image")
         .version(crate_version!())
         .author(crate_authors!())
-        .arg(Arg::with_name("sparse_file").required(true))
-        .arg(Arg::with_name("raw_file").required(true))
+        .arg(
+            Arg::with_name("sparse_images")
+                .help("Paths of the sparse images, separated by commas")
+                .required(true)
+                .multiple(true)
+                .require_delimiter(true),
+        )
+        .arg(
+            Arg::with_name("raw_image")
+                .help("Path of the output raw image")
+                .required(true),
+        )
         .arg(
             Arg::with_name("crc")
                 .help("Verify all checksums in the sparse image")
@@ -24,20 +34,26 @@ fn parse_args<'a>() -> ArgMatches<'a> {
 }
 
 fn simg2img(args: &ArgMatches) -> sparse::Result<()> {
-    let fi = File::open(&args.value_of("sparse_file").unwrap())?;
-    let fo = File::create(&args.value_of("raw_file").unwrap())?;
-
-    let reader = if args.is_present("crc") {
-        sparse::Reader::with_crc(fi)?
-    } else {
-        sparse::Reader::new(fi)?
-    };
+    let mut fis = Vec::new();
+    for path in args.values_of("sparse_images").unwrap() {
+        fis.push(File::open(path)?);
+    }
+    let fo = File::create(&args.value_of("raw_image").unwrap())?;
 
     let mut decoder = sparse::Decoder::new(fo)?;
 
-    for block in reader {
-        decoder.write_block(&block?)?;
+    for fi in fis {
+        let reader = if args.is_present("crc") {
+            sparse::Reader::with_crc(fi)?
+        } else {
+            sparse::Reader::new(fi)?
+        };
+
+        for block in reader {
+            decoder.write_block(&block?)?;
+        }
     }
+
     decoder.close()
 }
 

@@ -9,11 +9,19 @@ use clap::{App, Arg, ArgMatches};
 
 fn parse_args<'a>() -> ArgMatches<'a> {
     App::new("img2simg")
-        .about("Encode a raw file to a sparse file")
+        .about("Encode a raw image to a sparse image")
         .version(crate_version!())
         .author(crate_authors!())
-        .arg(Arg::with_name("raw_file").required(true))
-        .arg(Arg::with_name("sparse_file").required(true))
+        .arg(
+            Arg::with_name("raw_image")
+                .help("Path of the raw image")
+                .required(true),
+        )
+        .arg(
+            Arg::with_name("sparse_image")
+                .help("Path of the output sparse image")
+                .required(true),
+        )
         .arg(
             Arg::with_name("crc")
                 .help("Add a checksum to the sparse image")
@@ -24,8 +32,8 @@ fn parse_args<'a>() -> ArgMatches<'a> {
 }
 
 fn img2simg(args: &ArgMatches) -> sparse::Result<()> {
-    let fi = File::open(&args.value_of("raw_file").unwrap())?;
-    let fo = File::create(&args.value_of("sparse_file").unwrap())?;
+    let fi = File::open(&args.value_of("raw_image").unwrap())?;
+    let fo = File::create(&args.value_of("sparse_image").unwrap())?;
 
     let encoder = sparse::Encoder::new(fi)?;
 
