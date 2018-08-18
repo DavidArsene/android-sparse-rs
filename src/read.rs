@@ -155,12 +155,12 @@ impl AlignedBuf {
     }
 
     fn as_mut(&mut self) -> &mut [u8] {
-        let ptr = self.0.as_ptr() as *mut u8;
+        let ptr = self.0.as_mut_ptr() as *mut u8;
         let len = self.0.len() * mem::size_of::<u32>();
         unsafe { slice::from_raw_parts_mut(ptr, len) }
     }
 
-    fn as_u32_ref(&self) -> &[u32] {
+    fn as_u32(&self) -> &[u32] {
         &self.0
     }
 
@@ -199,7 +199,7 @@ impl Encoder {
     }
 
     fn encode_block(&self, buf: AlignedBuf) -> Block {
-        if is_sparse(buf.as_u32_ref()) {
+        if is_sparse(buf.as_u32()) {
             let value = read4(buf.as_ref()).unwrap();
             if value == [0; 4] {
                 Block::Skip
@@ -256,4 +256,53 @@ fn is_sparse(buf: &[u32]) -> bool {
     let mut parts = buf.iter();
     let first = parts.next().unwrap();
     parts.all(|p| p == first)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const U8_BUF: &[u8] = &[0xaa; BLOCK_SIZE];
+    const U32_BUF: &[u32] = &[0xaaaaaaaa; U32_BLOCK_SIZE];
+    const HALF_BLOCK_SIZE: usize = BLOCK_SIZE / 2;
+
+    #[test]
+    fn aligned_buf() {
+        let mut buf = AlignedBuf::new();
+        buf.as_mut().write_all(U8_BUF).unwrap();
+
+        assert_eq!(buf.as_ref(), U8_BUF);
+        assert_eq!(buf.as_u32(), U32_BUF);
+
+        let content = buf.into_inner();
+        assert_eq!(&content[..], U8_BUF);
+    }
+
+    #[test]
+    fn read4() {
+        assert_eq!(super::read4(U8_BUF).unwrap(), [0xaa; 4]);
+    }
+
+    #[test]
+    fn read_all() {
+        let mut buf = [0; BLOCK_SIZE];
+
+        assert_eq!(
+            super::read_all(&U8_BUF[..HALF_BLOCK_SIZE], &mut buf).unwrap(),
+            HALF_BLOCK_SIZE
+        );
+        assert_eq!(&buf[..HALF_BLOCK_SIZE], &U8_BUF[..HALF_BLOCK_SIZE]);
+        assert_eq!(&buf[HALF_BLOCK_SIZE..], &[0; HALF_BLOCK_SIZE][..]);
+
+        assert_eq!(super::read_all(U8_BUF, &mut buf).unwrap(), BLOCK_SIZE);
+        assert_eq!(&buf[..], U8_BUF);
+    }
+
+    #[test]
+    fn is_sparse() {
+        assert!(super::is_sparse(U32_BUF));
+
+        let buf: Vec<_> = (0..U32_BLOCK_SIZE as u32).collect();
+        assert!(!super::is_sparse(&buf));
+    }
 }
