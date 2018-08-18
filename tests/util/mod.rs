@@ -2,25 +2,27 @@
 
 use std::fs::File;
 use std::io::prelude::*;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use sparse::Block;
 
-pub fn data_file(name: &str) -> File {
-    let path = Path::new(file!())
+pub fn data_path(name: &str) -> PathBuf {
+    Path::new(file!())
         .ancestors()
         .nth(2)
         .unwrap()
         .join("data")
-        .join(name);
+        .join(name)
+}
+
+pub fn data_file(name: &str) -> File {
+    let path = data_path(name);
     File::open(path).unwrap()
 }
 
 pub fn data(name: &str) -> Vec<u8> {
     let mut file = data_file(name);
-    let mut data = Vec::new();
-    file.read_to_end(&mut data).unwrap();
-    data
+    read_file(&mut file)
 }
 
 pub fn test_blocks() -> Vec<Block> {
@@ -38,4 +40,10 @@ pub fn test_blocks() -> Vec<Block> {
         Block::Skip,
         Block::Raw(Box::new(raw2)),
     ]
+}
+
+pub fn read_file(file: &mut File) -> Vec<u8> {
+    let mut result = Vec::new();
+    file.read_to_end(&mut result).unwrap();
+    result
 }

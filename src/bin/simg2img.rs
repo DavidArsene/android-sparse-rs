@@ -3,6 +3,7 @@ extern crate android_sparse as sparse;
 extern crate clap;
 
 use std::fs::File;
+use std::process;
 
 use clap::{App, Arg, ArgMatches};
 
@@ -42,5 +43,8 @@ fn simg2img(args: &ArgMatches) -> sparse::Result<()> {
 
 fn main() {
     let args = parse_args();
-    simg2img(&args).unwrap_or_else(|err| eprintln!("error: {}", err));
+    simg2img(&args).unwrap_or_else(|err| {
+        eprintln!("error: {}", err);
+        process::exit(1);
+    });
 }

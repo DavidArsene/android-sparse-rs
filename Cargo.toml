@@ -18,6 +18,7 @@ version = "2"
 default-features = false
 
 [dev-dependencies]
+assert_cmd = "0.9"
 tempfile = "3"
 
 [badges]
