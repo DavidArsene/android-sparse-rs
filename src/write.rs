@@ -1,7 +1,7 @@
 //! Sparse image writing and decoding to raw images.
 
 use std::fs::File;
-use std::io::{self, prelude::*, BufWriter, SeekFrom};
+use std::io::{prelude::*, BufWriter, SeekFrom};
 
 use byteorder::{LittleEndian, WriteBytesExt};
 use crc::crc32::{self, Hasher32};
@@ -19,6 +19,7 @@ pub struct Writer {
     num_blocks: u32,
     num_chunks: u32,
     crc: Option<crc32::Digest>,
+    finished: bool,
 }
 
 impl Writer {
@@ -41,6 +42,7 @@ impl Writer {
             num_blocks: 0,
             num_chunks: 0,
             crc: None,
+            finished: false,
         })
     }
 
@@ -89,8 +91,17 @@ impl Writer {
         Ok(())
     }
 
-    /// Finish writing the sparse image and flush any buffered data.
-    pub fn finish(mut self) -> Result<()> {
+    /// Finishes writing the sparse image and flushes any buffered data.
+    ///
+    /// Consumes the reader as using it afterward would be invalid.
+    pub fn close(mut self) -> Result<()> {
+        self.finish()
+    }
+
+    fn finish(&mut self) -> Result<()> {
+        assert!(!self.finished);
+        self.finished = true;
+
         self.write_checksum()?;
         self.finish_chunk()?;
 
@@ -181,16 +192,28 @@ impl Writer {
     }
 }
 
+impl Drop for Writer {
+    fn drop(&mut self) {
+        if !self.finished {
+            let _ = self.finish();
+        }
+    }
+}
+
 /// Decodes sparse blocks and writes them to a raw image.
 pub struct Decoder {
     dst: BufWriter<File>,
+    finished: bool,
 }
 
 impl Decoder {
     /// Creates a new decoder that writes to `file`.
     pub fn new(file: File) -> Result<Self> {
         let dst = BufWriter::new(file);
-        Ok(Self { dst })
+        Ok(Self {
+            dst,
+            finished: false,
+        })
     }
 
     /// Writes a sparse block to this decoder.
@@ -215,15 +238,32 @@ impl Decoder {
         Ok(())
     }
 
-    /// Finish writing the raw image and flush any buffered data.
-    pub fn finish(self) -> Result<()> {
+    /// Finishes writing the raw image and flushes any buffered data.
+    ///
+    /// Consumes the reader as using it afterward would be invalid.
+    pub fn close(mut self) -> Result<()> {
+        self.finish()
+    }
+
+    fn finish(&mut self) -> Result<()> {
+        assert!(!self.finished);
+        self.finished = true;
+
         // Ensure the file has the correct size if the last block was a
         // skip block.
-        let mut file = self.dst.into_inner().map_err(io::Error::from)?;
+        let file = self.dst.get_mut();
         let offset = file.tell()?;
         file.set_len(offset)?;
 
         file.flush()?;
         Ok(())
+    }
+}
+
+impl Drop for Decoder {
+    fn drop(&mut self) {
+        if !self.finished {
+            let _ = self.finish();
+        }
     }
 }

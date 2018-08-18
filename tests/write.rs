@@ -18,7 +18,7 @@ fn write_sparse() {
     for block in &blocks {
         writer.write_block(block).unwrap();
     }
-    writer.finish().unwrap();
+    writer.close().unwrap();
 
     tmpfile.seek(SeekFrom::Start(0)).unwrap();
     assert_eq!(read_file(&mut tmpfile), data("hello.simg"));
@@ -34,7 +34,7 @@ fn write_sparse_crc() {
     for block in &blocks {
         writer.write_block(block).unwrap();
     }
-    writer.finish().unwrap();
+    writer.close().unwrap();
 
     tmpfile.seek(SeekFrom::Start(0)).unwrap();
     assert_eq!(read_file(&mut tmpfile), data("crc.simg"));
@@ -50,7 +50,7 @@ fn decode_to_raw() {
     for block in &blocks {
         decoder.write_block(block).unwrap();
     }
-    decoder.finish().unwrap();
+    decoder.close().unwrap();
 
     tmpfile.seek(SeekFrom::Start(0)).unwrap();
     assert_eq!(read_file(&mut tmpfile), data("decoded.img"));

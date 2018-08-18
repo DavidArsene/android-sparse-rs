@@ -38,7 +38,7 @@ fn simg2img(args: &ArgMatches) -> sparse::Result<()> {
     for block in reader {
         decoder.write_block(&block?)?;
     }
-    decoder.finish()
+    decoder.close()
 }
 
 fn main() {
