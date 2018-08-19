@@ -85,11 +85,12 @@ impl FileHeader {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(u16)]
 pub(crate) enum ChunkType {
-    Raw,
-    Fill,
-    DontCare,
-    Crc32,
+    Raw = CHUNK_MAGIC_RAW,
+    Fill = CHUNK_MAGIC_FILL,
+    DontCare = CHUNK_MAGIC_DONT_CARE,
+    Crc32 = CHUNK_MAGIC_CRC32,
 }
 
 impl ChunkType {
@@ -100,15 +101,6 @@ impl ChunkType {
             CHUNK_MAGIC_DONT_CARE => Ok(ChunkType::DontCare),
             CHUNK_MAGIC_CRC32 => Ok(ChunkType::Crc32),
             _ => Err(Error::Parse(format!("Invalid chunk magic: {}", magic))),
-        }
-    }
-
-    fn magic(self) -> u16 {
-        match self {
-            ChunkType::Raw => CHUNK_MAGIC_RAW,
-            ChunkType::Fill => CHUNK_MAGIC_FILL,
-            ChunkType::DontCare => CHUNK_MAGIC_DONT_CARE,
-            ChunkType::Crc32 => CHUNK_MAGIC_CRC32,
         }
     }
 }
@@ -136,7 +128,7 @@ impl ChunkHeader {
     }
 
     pub(crate) fn write_to<W: Write>(&self, mut w: W) -> Result<()> {
-        w.write_u16::<LittleEndian>(self.chunk_type.magic())?;
+        w.write_u16::<LittleEndian>(self.chunk_type as u16)?;
         w.write_u16::<LittleEndian>(0)?; // reserved1
 
         w.write_u32::<LittleEndian>(self.chunk_size)?;
