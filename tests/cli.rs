@@ -4,12 +4,12 @@ extern crate tempfile;
 
 mod util;
 
-use std::fs::File;
+use std::fs;
 use std::process::Command;
 
 use assert_cmd::prelude::*;
 
-use util::{data, data_path, read_file};
+use util::{data, data_path};
 
 #[test]
 fn img2simg() {
@@ -24,8 +24,7 @@ fn img2simg() {
         .assert()
         .success();
 
-    let mut file = File::open(&dst).unwrap();
-    assert_eq!(read_file(&mut file), data("hello.simg"));
+    assert_eq!(fs::read(&dst).unwrap(), data("hello.simg"));
 }
 
 #[test]
@@ -42,8 +41,7 @@ fn img2simg_crc() {
         .assert()
         .success();
 
-    let mut file = File::open(&dst).unwrap();
-    assert_eq!(read_file(&mut file), data("crc.simg"));
+    assert_eq!(fs::read(&dst).unwrap(), data("crc.simg"));
 }
 
 #[test]
@@ -59,8 +57,7 @@ fn simg2img() {
         .assert()
         .success();
 
-    let mut file = File::open(&dst).unwrap();
-    assert_eq!(read_file(&mut file), data("decoded.img"));
+    assert_eq!(fs::read(&dst).unwrap(), data("decoded.img"));
 }
 
 #[test]
@@ -76,8 +73,7 @@ fn simg2img_crc() {
         .assert()
         .success();
 
-    let mut file = File::open(&dst).unwrap();
-    assert_eq!(read_file(&mut file), data("decoded.img"));
+    assert_eq!(fs::read(&dst).unwrap(), data("decoded.img"));
 }
 
 #[test]
@@ -110,8 +106,7 @@ fn simg2img_concat() {
         .success();
 
     let expected = data("decoded.img");
-    let mut file = File::open(&dst).unwrap();
-    let result = read_file(&mut file);
+    let result = fs::read(&dst).unwrap();
 
     assert_eq!(&result[..result.len() / 2], &expected[..]);
     assert_eq!(&result[result.len() / 2..], &expected[..]);

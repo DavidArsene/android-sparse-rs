@@ -3,10 +3,18 @@ extern crate tempfile;
 
 mod util;
 
+use std::fs::File;
 use std::io::{prelude::*, SeekFrom};
 
 use sparse::{Decoder, Writer};
-use util::{data, read_file, test_blocks};
+use util::{data, test_blocks};
+
+fn read_from_start(file: &mut File) -> Vec<u8> {
+    let mut result = Vec::new();
+    file.seek(SeekFrom::Start(0)).unwrap();
+    file.read_to_end(&mut result).unwrap();
+    result
+}
 
 #[test]
 fn write_sparse() {
@@ -20,8 +28,7 @@ fn write_sparse() {
     }
     writer.close().unwrap();
 
-    tmpfile.seek(SeekFrom::Start(0)).unwrap();
-    assert_eq!(read_file(&mut tmpfile), data("hello.simg"));
+    assert_eq!(read_from_start(&mut tmpfile), data("hello.simg"));
 }
 
 #[test]
@@ -36,8 +43,7 @@ fn write_sparse_crc() {
     }
     writer.close().unwrap();
 
-    tmpfile.seek(SeekFrom::Start(0)).unwrap();
-    assert_eq!(read_file(&mut tmpfile), data("crc.simg"));
+    assert_eq!(read_from_start(&mut tmpfile), data("crc.simg"));
 }
 
 #[test]
@@ -52,6 +58,5 @@ fn decode_to_raw() {
     }
     decoder.close().unwrap();
 
-    tmpfile.seek(SeekFrom::Start(0)).unwrap();
-    assert_eq!(read_file(&mut tmpfile), data("decoded.img"));
+    assert_eq!(read_from_start(&mut tmpfile), data("decoded.img"));
 }

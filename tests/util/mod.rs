@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
-use std::fs::File;
-use std::io::prelude::*;
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
 use sparse::Block;
@@ -21,8 +20,8 @@ pub fn data_file(name: &str) -> File {
 }
 
 pub fn data(name: &str) -> Vec<u8> {
-    let mut file = data_file(name);
-    read_file(&mut file)
+    let path = data_path(name);
+    fs::read(path).unwrap()
 }
 
 pub fn test_blocks() -> Vec<Block> {
@@ -40,10 +39,4 @@ pub fn test_blocks() -> Vec<Block> {
         Block::Skip,
         Block::Raw(Box::new(raw2)),
     ]
-}
-
-pub fn read_file(file: &mut File) -> Vec<u8> {
-    let mut result = Vec::new();
-    file.read_to_end(&mut result).unwrap();
-    result
 }
