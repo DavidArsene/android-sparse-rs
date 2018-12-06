@@ -1,15 +1,17 @@
 //! Sparse image writing and decoding to raw images.
 
-use std::fs::File;
-use std::io::{prelude::*, BufWriter, SeekFrom};
-
+use crate::{
+    block::Block,
+    ext::{Tell, WriteBlock},
+    headers::{ChunkHeader, ChunkType, FileHeader},
+    result::Result,
+};
 use byteorder::{LittleEndian, WriteBytesExt};
 use crc::crc32::{self, Hasher32};
-
-use block::Block;
-use ext::{Tell, WriteBlock};
-use headers::{ChunkHeader, ChunkType, FileHeader};
-use result::Result;
+use std::{
+    fs::File,
+    io::{prelude::*, BufWriter, SeekFrom},
+};
 
 /// Writes sparse blocks to a sparse image.
 pub struct Writer {
@@ -71,10 +73,12 @@ impl Writer {
                 self.dst.write_all(&**buf)?;
                 chunk.total_size += Block::SIZE;
             }
-            Block::Fill(value) => if self.current_fill.is_none() {
-                self.dst.write_all(value)?;
-                self.current_fill = Some(*value);
-            },
+            Block::Fill(value) => {
+                if self.current_fill.is_none() {
+                    self.dst.write_all(value)?;
+                    self.current_fill = Some(*value);
+                }
+            }
             Block::Skip => (),
             Block::Crc32(checksum) => {
                 self.dst.write_u32::<LittleEndian>(*checksum)?;

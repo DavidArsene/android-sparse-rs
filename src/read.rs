@@ -1,16 +1,18 @@
 //! Sparse image reading and encoding from raw images.
 
-use std::fs::File;
-use std::io::{prelude::*, BufReader, ErrorKind};
-use std::{mem, slice};
-
+use crate::{
+    block::Block,
+    ext::WriteBlock,
+    headers::{ChunkHeader, ChunkType, FileHeader},
+    result::{Error, Result},
+};
 use byteorder::{LittleEndian, ReadBytesExt};
 use crc::crc32::{self, Hasher32};
-
-use block::Block;
-use ext::WriteBlock;
-use headers::{ChunkHeader, ChunkType, FileHeader};
-use result::{Error, Result};
+use std::{
+    fs::File,
+    io::{prelude::*, BufReader, ErrorKind},
+    mem, slice,
+};
 
 const BLOCK_SIZE: usize = Block::SIZE as usize;
 const U32_BLOCK_SIZE: usize = BLOCK_SIZE / mem::size_of::<u32>();

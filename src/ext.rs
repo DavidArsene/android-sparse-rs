@@ -1,10 +1,8 @@
 //! Extensions for foreign types.
 
-use std::io::{self, prelude::*, SeekFrom};
-
+use crate::block::Block;
 use crc::crc32::{self, Hasher32};
-
-use block::Block;
+use std::io::{self, prelude::*, SeekFrom};
 
 /// Enables writing sparse blocks to `crc::crc32::Digest`s.
 pub(crate) trait WriteBlock {
@@ -15,9 +13,11 @@ impl WriteBlock for crc32::Digest {
     fn write_block(&mut self, block: &Block) {
         match block {
             Block::Raw(buf) => self.write(&**buf),
-            Block::Fill(value) => for _ in 0..(Block::SIZE / 4) {
-                self.write(value);
-            },
+            Block::Fill(value) => {
+                for _ in 0..(Block::SIZE / 4) {
+                    self.write(value);
+                }
+            }
             Block::Skip => self.write(&[0; Block::SIZE as usize]),
             Block::Crc32(_) => (),
         }

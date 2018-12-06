@@ -1,9 +1,10 @@
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::prelude::*;
 
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-
-use block::Block;
-use result::{Error, Result};
+use crate::{
+    block::Block,
+    result::{Error, Result},
+};
 
 const FILE_MAGIC: u32 = 0xed26_ff3a;
 const FILE_FORMAT_VERSION: (u16, u16) = (1, 0);

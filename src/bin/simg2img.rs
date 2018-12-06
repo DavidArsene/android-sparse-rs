@@ -1,11 +1,7 @@
 extern crate android_sparse as sparse;
-#[macro_use]
-extern crate clap;
 
-use std::fs::File;
-use std::process;
-
-use clap::{App, Arg, ArgMatches};
+use clap::{crate_authors, crate_version, App, Arg, ArgMatches};
+use std::{fs::File, process};
 
 fn parse_args<'a>() -> ArgMatches<'a> {
     App::new("simg2img")
