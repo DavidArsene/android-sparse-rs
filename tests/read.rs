@@ -2,8 +2,8 @@ extern crate android_sparse as sparse;
 
 mod util;
 
+use self::util::{data_file, test_blocks};
 use sparse::{Block, Encoder, Reader};
-use util::{data_file, test_blocks};
 
 #[test]
 fn read_sparse() {

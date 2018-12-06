@@ -1,7 +1,9 @@
 #![allow(dead_code)]
 
-use std::fs::{self, File};
-use std::path::{Path, PathBuf};
+use std::{
+    fs::{self, File},
+    path::{Path, PathBuf}
+};
 
 use sparse::Block;
 

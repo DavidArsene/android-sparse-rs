@@ -22,7 +22,7 @@ impl Block {
 
 impl fmt::Debug for Block {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Block::*;
+        use self::Block::*;
 
         match self {
             Raw(r) => write!(f, "Raw({:?})", &r[..]),
@@ -33,7 +33,7 @@ impl fmt::Debug for Block {
 
 impl PartialEq for Block {
     fn eq(&self, other: &Self) -> bool {
-        use Block::*;
+        use self::Block::*;
 
         match (self, other) {
             (Raw(r1), Raw(r2)) => r1[..] == r2[..],

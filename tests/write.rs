@@ -1,13 +1,13 @@
 extern crate android_sparse as sparse;
-extern crate tempfile;
 
 mod util;
 
-use std::fs::File;
-use std::io::{prelude::*, SeekFrom};
-
+use crate::util::{data, test_blocks};
 use sparse::{Decoder, Writer};
-use util::{data, test_blocks};
+use std::{
+    fs::File,
+    io::{prelude::*, SeekFrom},
+};
 
 fn read_from_start(file: &mut File) -> Vec<u8> {
     let mut result = Vec::new();

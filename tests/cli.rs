@@ -1,15 +1,10 @@
 extern crate android_sparse as sparse;
-extern crate assert_cmd;
-extern crate tempfile;
 
 mod util;
 
-use std::fs;
-use std::process::Command;
-
+use self::util::{data, data_path};
 use assert_cmd::prelude::*;
-
-use util::{data, data_path};
+use std::{fs, process::Command};
 
 #[test]
 fn img2simg() {

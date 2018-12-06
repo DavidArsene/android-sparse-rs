@@ -12,12 +12,6 @@
 
 #![deny(missing_docs)]
 
-extern crate byteorder;
-extern crate crc;
-
-#[cfg(test)]
-extern crate tempfile;
-
 pub mod block;
 pub mod read;
 pub mod result;
@@ -26,7 +20,9 @@ pub mod write;
 mod ext;
 mod headers;
 
-pub use block::Block;
-pub use read::{Encoder, Reader};
-pub use result::Result;
-pub use write::{Decoder, Writer};
+pub use self::{
+    block::Block,
+    read::{Encoder, Reader},
+    result::Result,
+    write::{Decoder, Writer},
+};
