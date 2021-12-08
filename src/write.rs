@@ -251,11 +251,9 @@ impl<W: Write + Seek> Decoder<W> {
         assert!(!self.finished);
         self.finished = true;
 
-        // Ensure the file has the correct size if the last block was a
-        // skip block.
-        let file = self.dst.get_mut();
+        let writer = self.dst.get_mut();
+        writer.flush()?;
 
-        file.flush()?;
         Ok(())
     }
 }
