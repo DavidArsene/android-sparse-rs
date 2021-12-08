@@ -1,6 +1,6 @@
 //! Error handling with the `Result` type.
 
-use std::{error, fmt, io, result};
+use std::{fmt, io, result};
 
 /// Error type used for all errors produced by this crate.
 #[derive(Debug)]
@@ -16,15 +16,6 @@ impl fmt::Display for Error {
         match self {
             Error::Io(err) => err.fmt(f),
             Error::Parse(s) => f.write_str(s),
-        }
-    }
-}
-
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match self {
-            Error::Io(err) => err.description(),
-            Error::Parse(s) => &s,
         }
     }
 }

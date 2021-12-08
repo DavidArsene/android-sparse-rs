@@ -8,14 +8,11 @@ use crate::{
 };
 use byteorder::{LittleEndian, WriteBytesExt};
 use crc::crc32::{self, Hasher32};
-use std::{
-    fs::File,
-    io::{prelude::*, BufWriter, SeekFrom},
-};
+use std::io::{prelude::*, BufWriter, SeekFrom};
 
 /// Writes sparse blocks to a sparse image.
-pub struct Writer {
-    dst: BufWriter<File>,
+pub struct Writer<W: Write + Seek> {
+    dst: BufWriter<W>,
     current_chunk: Option<ChunkHeader>,
     current_fill: Option<[u8; 4]>,
     num_blocks: u32,
@@ -24,14 +21,14 @@ pub struct Writer {
     finished: bool,
 }
 
-impl Writer {
-    /// Creates a new writer that writes to `file`.
+impl<W: Write + Seek> Writer<W> {
+    /// Creates a new writer that writes to `w`.
     ///
     /// The created writer skips checksum calculation in favor of
     /// speed. To get a writer that does checksum calculation, use
     /// `Writer::with_crc` instead.
-    pub fn new(file: File) -> Result<Self> {
-        let mut dst = BufWriter::new(file);
+    pub fn new(w: W) -> Result<Self> {
+        let mut dst = BufWriter::new(w);
         // We cannot write the file header until we know the total number of
         // blocks and chunks. So we skip it here and write it at the end in
         // `finish`.
@@ -48,10 +45,10 @@ impl Writer {
         })
     }
 
-    /// Creates a new writer that writes to `file` and adds a checksum
+    /// Creates a new writer that writes to `w` and adds a checksum
     /// at the end.
-    pub fn with_crc(file: File) -> Result<Self> {
-        let mut writer = Self::new(file)?;
+    pub fn with_crc(w: W) -> Result<Self> {
+        let mut writer = Self::new(w)?;
         writer.crc = Some(crc32::Digest::new(crc32::IEEE));
         Ok(writer)
     }
@@ -88,7 +85,7 @@ impl Writer {
         }
 
         if let Some(digest) = self.crc.as_mut() {
-            digest.write_block(&block);
+            digest.write_block(block);
         }
 
         chunk.chunk_size += 1;
@@ -196,7 +193,7 @@ impl Writer {
     }
 }
 
-impl Drop for Writer {
+impl<W: Write + Seek> Drop for Writer<W> {
     fn drop(&mut self) {
         if !self.finished {
             let _ = self.finish();
@@ -205,15 +202,15 @@ impl Drop for Writer {
 }
 
 /// Decodes sparse blocks and writes them to a raw image.
-pub struct Decoder {
-    dst: BufWriter<File>,
+pub struct Decoder<W: Write + Seek> {
+    dst: BufWriter<W>,
     finished: bool,
 }
 
-impl Decoder {
-    /// Creates a new decoder that writes to `file`.
-    pub fn new(file: File) -> Result<Self> {
-        let dst = BufWriter::new(file);
+impl<W: Write + Seek> Decoder<W> {
+    /// Creates a new decoder that writes to `w`.
+    pub fn new(w: W) -> Result<Self> {
+        let dst = BufWriter::new(w);
         Ok(Self {
             dst,
             finished: false,
@@ -234,8 +231,9 @@ impl Decoder {
                 }
             }
             Block::Skip => {
-                let offset = i64::from(Block::SIZE);
+                let offset = i64::from(Block::SIZE) - 1;
                 self.dst.seek(SeekFrom::Current(offset))?;
+                self.dst.write_all(&[0])?
             }
             Block::Crc32(_) => (),
         }
@@ -256,15 +254,13 @@ impl Decoder {
         // Ensure the file has the correct size if the last block was a
         // skip block.
         let file = self.dst.get_mut();
-        let offset = file.tell()?;
-        file.set_len(offset)?;
 
         file.flush()?;
         Ok(())
     }
 }
 
-impl Drop for Decoder {
+impl<W: Write + Seek> Drop for Decoder<W> {
     fn drop(&mut self) {
         if !self.finished {
             let _ = self.finish();

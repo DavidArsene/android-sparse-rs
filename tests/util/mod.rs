@@ -2,16 +2,14 @@
 
 use std::{
     fs::{self, File},
-    path::{Path, PathBuf}
+    path::PathBuf,
 };
 
 use sparse::Block;
 
 pub fn data_path(name: &str) -> PathBuf {
-    Path::new(file!())
-        .ancestors()
-        .nth(2)
-        .unwrap()
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
         .join("data")
         .join(name)
 }

@@ -9,7 +9,6 @@ use crate::{
 use byteorder::{LittleEndian, ReadBytesExt};
 use crc::crc32::{self, Hasher32};
 use std::{
-    fs::File,
     io::{prelude::*, BufReader, ErrorKind},
     mem, slice,
 };
@@ -21,8 +20,8 @@ const U32_BLOCK_SIZE: usize = BLOCK_SIZE / mem::size_of::<u32>();
 ///
 /// Implements the `Iterator` trait, so sparse blocks can be read from
 /// a reader by iterating over it.
-pub struct Reader {
-    src: BufReader<File>,
+pub struct Reader<R: Read> {
+    src: BufReader<R>,
     current_chunk: Option<ChunkHeader>,
     current_fill: Option<[u8; 4]>,
     remaining_chunks: u32,
@@ -30,14 +29,14 @@ pub struct Reader {
     finished: bool,
 }
 
-impl Reader {
-    /// Creates a new reader that reads from `file`.
+impl<R: Read> Reader<R> {
+    /// Creates a new reader that reads from `r`.
     ///
     /// The created reader skips checksum verification in favor of
     /// speed. To get a reader that does checksum verification, use
     /// `Reader::with_crc` instead.
-    pub fn new(file: File) -> Result<Self> {
-        let mut src = BufReader::new(file);
+    pub fn new(r: R) -> Result<Self> {
+        let mut src = BufReader::new(r);
         let header = FileHeader::read_from(&mut src)?;
         Ok(Self {
             src,
@@ -49,10 +48,10 @@ impl Reader {
         })
     }
 
-    /// Creates a new reader that reads from `file` and verifies all
+    /// Creates a new reader that reads from `r` and verifies all
     /// included checksums.
-    pub fn with_crc(file: File) -> Result<Self> {
-        let mut reader = Self::new(file)?;
+    pub fn with_crc(r: R) -> Result<Self> {
+        let mut reader = Self::new(r)?;
         reader.crc = Some(crc32::Digest::new(crc32::IEEE));
         Ok(reader)
     }
@@ -117,7 +116,7 @@ impl Reader {
     }
 }
 
-impl Iterator for Reader {
+impl<R: Read> Iterator for Reader<R> {
     type Item = Result<Block>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -175,23 +174,23 @@ impl AlignedBuf {
 ///
 /// Implements the `Iterator` trait, so sparse blocks can be read from
 /// an encoder by iterating over it.
-pub struct Encoder {
-    src: File,
+pub struct Encoder<R: Read> {
+    src: R,
     finished: bool,
 }
 
-impl Encoder {
-    /// Creates a new encoder that reads from `file`.
-    pub fn new(file: File) -> Result<Self> {
+impl<R: Read> Encoder<R> {
+    /// Creates a new encoder that reads from `r`.
+    pub fn new(r: R) -> Result<Self> {
         Ok(Self {
-            src: file,
+            src: r,
             finished: false,
         })
     }
 
-    fn read_block(&self) -> Result<Option<Block>> {
+    fn read_block(&mut self) -> Result<Option<Block>> {
         let mut buf = AlignedBuf::new();
-        let bytes_read = read_all(&self.src, buf.as_mut())?;
+        let bytes_read = read_all(&mut self.src, buf.as_mut())?;
 
         let block = match bytes_read {
             0 => None,
@@ -214,7 +213,7 @@ impl Encoder {
     }
 }
 
-impl Iterator for Encoder {
+impl<R: Read> Iterator for Encoder<R> {
     type Item = Result<Block>;
 
     fn next(&mut self) -> Option<Self::Item> {
