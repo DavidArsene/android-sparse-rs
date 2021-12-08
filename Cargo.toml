@@ -8,7 +8,7 @@ readme = "README.md"
 keywords = ["android", "sparse"]
 categories = ["command-line-utilities", "compression", "parsing"]
 license = "MIT"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 byteorder = "1"
