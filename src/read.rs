@@ -150,13 +150,13 @@ impl AlignedBuf {
     }
 
     fn as_ref(&self) -> &[u8] {
-        let ptr = self.0.as_ptr() as *const u8;
+        let ptr = self.0.as_ptr().cast();
         let len = self.0.len() * mem::size_of::<u32>();
         unsafe { slice::from_raw_parts(ptr, len) }
     }
 
     fn as_mut(&mut self) -> &mut [u8] {
-        let ptr = self.0.as_mut_ptr() as *mut u8;
+        let ptr = self.0.as_mut_ptr().cast();
         let len = self.0.len() * mem::size_of::<u32>();
         unsafe { slice::from_raw_parts_mut(ptr, len) }
     }
@@ -194,12 +194,12 @@ impl<R: Read> Encoder<R> {
 
         let block = match bytes_read {
             0 => None,
-            _ => Some(self.encode_block(buf)),
+            _ => Some(Self::encode_block(buf)),
         };
         Ok(block)
     }
 
-    fn encode_block(&self, buf: AlignedBuf) -> Block {
+    fn encode_block(buf: AlignedBuf) -> Block {
         if is_sparse(buf.as_u32()) {
             let value = read4(buf.as_ref()).unwrap();
             if value == [0; 4] {
@@ -243,7 +243,7 @@ fn read_all<R: Read>(mut r: R, mut buf: &mut [u8]) -> Result<usize> {
             Ok(0) => break,
             Ok(n) => {
                 let tmp = buf;
-                buf = &mut tmp[n..]
+                buf = &mut tmp[n..];
             }
             Err(ref e) if e.kind() == ErrorKind::Interrupted => (),
             Err(e) => return Err(e.into()),

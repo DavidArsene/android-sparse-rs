@@ -196,7 +196,7 @@ impl<W: Write + Seek> Writer<W> {
 impl<W: Write + Seek> Drop for Writer<W> {
     fn drop(&mut self) {
         if !self.finished {
-            let _ = self.finish();
+            self.finish().ok();
         }
     }
 }
@@ -233,7 +233,7 @@ impl<W: Write + Seek> Decoder<W> {
             Block::Skip => {
                 let offset = i64::from(Block::SIZE) - 1;
                 self.dst.seek(SeekFrom::Current(offset))?;
-                self.dst.write_all(&[0])?
+                self.dst.write_all(&[0])?;
             }
             Block::Crc32(_) => (),
         }
@@ -263,7 +263,7 @@ impl<W: Write + Seek> Decoder<W> {
 impl<W: Write + Seek> Drop for Decoder<W> {
     fn drop(&mut self) {
         if !self.finished {
-            let _ = self.finish();
+            self.finish().ok();
         }
     }
 }
