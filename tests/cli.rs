@@ -84,7 +84,7 @@ fn simg2img_invalid_crc() {
         .arg(&dst)
         .assert()
         .failure()
-        .stderr("error: Checksum does not match\n");
+        .stderr("Error: Checksum does not match\n");
 }
 
 #[test]
@@ -95,7 +95,8 @@ fn simg2img_concat() {
 
     Command::cargo_bin("simg2img")
         .unwrap()
-        .arg(format!("{},{}", src.display(), src.display()))
+        .arg(&src)
+        .arg(&src)
         .arg(&dst)
         .assert()
         .success();

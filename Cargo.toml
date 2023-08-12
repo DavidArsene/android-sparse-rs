@@ -1,26 +1,30 @@
 [package]
 name = "android-sparse"
 version = "0.6.0"
-authors = ["Jan Teske <jteske@posteo.net>"]
+authors = ["Jan Teske <jteske@posteo.net>", "David Arsene"]
 description = "An implementation of Android's sparse file format."
-repository = "https://gitlab.com/ra_kete/android-sparse-rs"
-readme = "README.md"
-keywords = ["android", "sparse"]
-categories = ["command-line-utilities", "compression", "parsing"]
 license = "MIT"
 edition = "2021"
 
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
+
 [dependencies]
+anyhow = "1"
 byteorder = "1"
-crc = "1"
+
+[dependencies.crc32fast]
+version = "1"
+features = ["nightly"]
 
 [dependencies.clap]
-version = "2"
+version = "4"
 default-features = false
+features = ["cargo", "derive", "help", "std"]
 
 [dev-dependencies]
-assert_cmd = "0.9"
+assert_cmd = "2"
 tempfile = "3"
-
-[badges]
-gitlab = { repository = "ra_kete/android-sparse-rs" }

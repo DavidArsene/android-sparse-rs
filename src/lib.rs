@@ -14,7 +14,6 @@
 
 pub mod block;
 pub mod read;
-pub mod result;
 pub mod write;
 
 mod ext;
@@ -23,6 +22,5 @@ mod headers;
 pub use self::{
     block::Block,
     read::{Encoder, Reader},
-    result::Result,
     write::{Decoder, Writer},
 };

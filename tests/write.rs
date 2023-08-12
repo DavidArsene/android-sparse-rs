@@ -22,7 +22,7 @@ fn write_sparse() {
     let mut tmpfile = tempfile::tempfile().unwrap();
 
     let file = tmpfile.try_clone().unwrap();
-    let mut writer = Writer::new(file).unwrap();
+    let mut writer = Writer::new(file, false).unwrap();
     for block in &blocks {
         writer.write_block(block).unwrap();
     }
@@ -37,7 +37,7 @@ fn write_sparse_crc() {
     let mut tmpfile = tempfile::tempfile().unwrap();
 
     let file = tmpfile.try_clone().unwrap();
-    let mut writer = Writer::with_crc(file).unwrap();
+    let mut writer = Writer::new(file, true).unwrap();
     for block in &blocks {
         writer.write_block(block).unwrap();
     }

@@ -1,38 +1,25 @@
 //! Extensions for foreign types.
 
 use crate::block::Block;
-use crc::crc32::{self, Hasher32};
-use std::io::{self, prelude::*, SeekFrom};
+use crc32fast::Hasher;
 
-/// Enables writing sparse blocks to `crc::crc32::Digest`s.
+// Enables writing sparse blocks to `crc32fast::Hasher`s.
 pub(crate) trait WriteBlock {
     fn write_block(&mut self, block: &Block);
 }
 
-impl WriteBlock for crc32::Digest {
+impl WriteBlock for Hasher {
     fn write_block(&mut self, block: &Block) {
         match block {
-            Block::Raw(buf) => self.write(&**buf),
+            Block::Raw(buf) => self.update(&**buf),
             Block::Fill(value) => {
                 for _ in 0..(Block::SIZE / 4) {
-                    self.write(value);
+                    self.update(value);
                 }
             }
-            Block::Skip => self.write(&[0; Block::SIZE as usize]),
+            Block::Skip => self.update(&[0; Block::SIZE as usize]),
             Block::Crc32(_) => (),
         }
-    }
-}
-
-/// Enables conveniently getting the current offset of anything that
-/// implements `Seek`.
-pub(crate) trait Tell {
-    fn tell(&mut self) -> io::Result<u64>;
-}
-
-impl<T: Seek> Tell for T {
-    fn tell(&mut self) -> io::Result<u64> {
-        self.seek(SeekFrom::Current(0))
     }
 }
 
@@ -40,11 +27,12 @@ impl<T: Seek> Tell for T {
 mod test {
     use super::*;
     use tempfile::tempfile;
+    use std::io::prelude::*;
 
     fn block_crc(block: &Block) -> u32 {
-        let mut digest = crc32::Digest::new(crc32::IEEE);
-        digest.write_block(block);
-        digest.sum32()
+        let mut hasher = Hasher::new();
+        hasher.write_block(block);
+        hasher.finalize()
     }
 
     #[test]
@@ -75,6 +63,6 @@ mod test {
     fn tell() {
         let mut tmp = tempfile().unwrap();
         writeln!(tmp, "hello world").unwrap();
-        assert_eq!(tmp.tell().unwrap(), 12);
+        assert_eq!(tmp.stream_position().unwrap(), 12);
     }
 }

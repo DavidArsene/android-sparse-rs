@@ -10,7 +10,7 @@ fn read_sparse() {
     let file = data_file("hello.simg");
     let expected = test_blocks();
 
-    let reader = Reader::new(file).unwrap();
+    let reader = Reader::new(file, false).unwrap();
     let blocks: Vec<_> = reader.map(|r| r.unwrap()).collect();
     assert_eq!(blocks.len(), expected.len());
 
@@ -25,7 +25,7 @@ fn read_sparse_with_crc() {
     let mut expected = test_blocks();
     expected.push(Block::Crc32(0xffb880a5));
 
-    let reader = Reader::with_crc(file).unwrap();
+    let reader = Reader::new(file, true).unwrap();
     let blocks: Vec<_> = reader.map(|r| r.unwrap()).collect();
     assert_eq!(blocks.len(), expected.len());
 
@@ -38,7 +38,7 @@ fn read_sparse_with_crc() {
 fn read_sparse_with_invalid_crc() {
     let file = data_file("invalid_crc.simg");
 
-    let mut reader = Reader::with_crc(file).unwrap();
+    let mut reader = Reader::new(file, true).unwrap();
     assert!(reader.nth(5).unwrap().is_err());
 }
 

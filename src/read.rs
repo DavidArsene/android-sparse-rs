@@ -4,10 +4,10 @@ use crate::{
     block::Block,
     ext::WriteBlock,
     headers::{ChunkHeader, ChunkType, FileHeader},
-    result::{Error, Result},
 };
+use anyhow::{Result, ensure};
 use byteorder::{LittleEndian, ReadBytesExt};
-use crc::crc32::{self, Hasher32};
+use crc32fast::Hasher;
 use std::{
     io::{prelude::*, BufReader, ErrorKind},
     mem, slice,
@@ -25,17 +25,13 @@ pub struct Reader<R: Read> {
     current_chunk: Option<ChunkHeader>,
     current_fill: Option<[u8; 4]>,
     remaining_chunks: u32,
-    crc: Option<crc32::Digest>,
+    crc: Option<Hasher>,
     finished: bool,
 }
 
 impl<R: Read> Reader<R> {
     /// Creates a new reader that reads from `r`.
-    ///
-    /// The created reader skips checksum verification in favor of
-    /// speed. To get a reader that does checksum verification, use
-    /// `Reader::with_crc` instead.
-    pub fn new(r: R) -> Result<Self> {
+    pub fn new(r: R, crc: bool) -> Result<Self> {
         let mut src = BufReader::new(r);
         let header = FileHeader::read_from(&mut src)?;
         Ok(Self {
@@ -43,17 +39,9 @@ impl<R: Read> Reader<R> {
             current_chunk: None,
             current_fill: None,
             remaining_chunks: header.total_chunks,
-            crc: None,
+            crc: if crc { Some(Hasher::new()) } else { None },
             finished: false,
         })
-    }
-
-    /// Creates a new reader that reads from `r` and verifies all
-    /// included checksums.
-    pub fn with_crc(r: R) -> Result<Self> {
-        let mut reader = Self::new(r)?;
-        reader.crc = Some(crc32::Digest::new(crc32::IEEE));
-        Ok(reader)
     }
 
     fn next_block(&mut self) -> Result<Block> {
@@ -62,9 +50,9 @@ impl<R: Read> Reader<R> {
             None => ChunkHeader::read_from(&mut self.src)?,
         };
 
-        let block = self.read_block(&mut chunk)?;
-        if let Some(digest) = self.crc.as_mut() {
-            digest.write_block(&block);
+        let block = self.read_block(&chunk)?;
+        if let Some(hasher) = self.crc.as_mut() {
+            hasher.write_block(&block);
         }
 
         if chunk.chunk_size <= 1 {
@@ -79,7 +67,7 @@ impl<R: Read> Reader<R> {
         Ok(block)
     }
 
-    fn read_block(&mut self, chunk: &mut ChunkHeader) -> Result<Block> {
+    fn read_block(&mut self, chunk: &ChunkHeader) -> Result<Block> {
         match chunk.chunk_type {
             ChunkType::Raw => {
                 let mut buf = [0; BLOCK_SIZE];
@@ -105,11 +93,9 @@ impl<R: Read> Reader<R> {
         }
     }
 
-    fn verify_checksum(&self, checksum: u32) -> Result<()> {
-        if let Some(digest) = self.crc.as_ref() {
-            if digest.sum32() != checksum {
-                return Err(Error::Parse("Checksum does not match".into()));
-            }
+    fn verify_checksum(&mut self, checksum: u32) -> Result<()> {
+        if let Some(hasher) = self.crc.take() {
+            ensure!(hasher.finalize() == checksum, "Checksum does not match");
         }
 
         Ok(())

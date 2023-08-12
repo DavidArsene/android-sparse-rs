@@ -2,12 +2,12 @@
 
 use crate::{
     block::Block,
-    ext::{Tell, WriteBlock},
+    ext::WriteBlock,
     headers::{ChunkHeader, ChunkType, FileHeader},
-    result::Result,
 };
+use anyhow::Result;
 use byteorder::{LittleEndian, WriteBytesExt};
-use crc::crc32::{self, Hasher32};
+use crc32fast::Hasher;
 use std::io::{prelude::*, BufWriter, SeekFrom};
 
 /// Writes sparse blocks to a sparse image.
@@ -17,17 +17,13 @@ pub struct Writer<W: Write + Seek> {
     current_fill: Option<[u8; 4]>,
     num_blocks: u32,
     num_chunks: u32,
-    crc: Option<crc32::Digest>,
+    crc: Option<Hasher>,
     finished: bool,
 }
 
 impl<W: Write + Seek> Writer<W> {
     /// Creates a new writer that writes to `w`.
-    ///
-    /// The created writer skips checksum calculation in favor of
-    /// speed. To get a writer that does checksum calculation, use
-    /// `Writer::with_crc` instead.
-    pub fn new(w: W) -> Result<Self> {
+    pub fn new(w: W, crc: bool) -> Result<Self> {
         let mut dst = BufWriter::new(w);
         // We cannot write the file header until we know the total number of
         // blocks and chunks. So we skip it here and write it at the end in
@@ -40,17 +36,9 @@ impl<W: Write + Seek> Writer<W> {
             current_fill: None,
             num_blocks: 0,
             num_chunks: 0,
-            crc: None,
+            crc: if crc { Some(Hasher::new()) } else { None },
             finished: false,
         })
-    }
-
-    /// Creates a new writer that writes to `w` and adds a checksum
-    /// at the end.
-    pub fn with_crc(w: W) -> Result<Self> {
-        let mut writer = Self::new(w)?;
-        writer.crc = Some(crc32::Digest::new(crc32::IEEE));
-        Ok(writer)
     }
 
     /// Writes a sparse block to this writer.
@@ -84,8 +72,8 @@ impl<W: Write + Seek> Writer<W> {
             }
         }
 
-        if let Some(digest) = self.crc.as_mut() {
-            digest.write_block(block);
+        if let Some(hasher) = self.crc.as_mut() {
+            hasher.write_block(block);
         }
 
         chunk.chunk_size += 1;
@@ -169,7 +157,7 @@ impl<W: Write + Seek> Writer<W> {
             None => return Ok(()),
         };
 
-        let pos = self.dst.tell()?;
+        let pos = self.dst.stream_position()?;
         let header_off = i64::from(chunk.total_size);
         self.dst.seek(SeekFrom::Current(-header_off))?;
         chunk.write_to(&mut self.dst)?;
@@ -183,8 +171,8 @@ impl<W: Write + Seek> Writer<W> {
     }
 
     fn write_checksum(&mut self) -> Result<()> {
-        let checksum = match self.crc.as_ref() {
-            Some(digest) => digest.sum32(),
+        let checksum = match self.crc.take() {
+            Some(hasher) => hasher.finalize(),
             None => return Ok(()),
         };
 

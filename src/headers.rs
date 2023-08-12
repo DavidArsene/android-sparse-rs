@@ -1,10 +1,8 @@
+use anyhow::{Result, ensure, bail};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::prelude::*;
 
-use crate::{
-    block::Block,
-    result::{Error, Result},
-};
+use crate::block::Block;
 
 const FILE_MAGIC: u32 = 0xed26_ff3a;
 const FILE_FORMAT_VERSION: (u16, u16) = (1, 0);
@@ -26,37 +24,19 @@ impl FileHeader {
 
     pub(crate) fn read_from<R: Read>(mut r: R) -> Result<Self> {
         let magic = r.read_u32::<LittleEndian>()?;
-        if magic != FILE_MAGIC {
-            return Err(Error::Parse(format!("Invalid file magic: {:x}", magic)));
-        }
+        ensure!(magic == FILE_MAGIC, "Invalid file magic: {magic:x}");
 
         let version = (r.read_u16::<LittleEndian>()?, r.read_u16::<LittleEndian>()?);
-        if version != FILE_FORMAT_VERSION {
-            let (major, minor) = version;
-            return Err(Error::Parse(format!(
-                "Invalid file format version: {}.{}",
-                major, minor
-            )));
-        }
+        ensure!(version == FILE_FORMAT_VERSION, "Invalid file format version: {version:?}");
 
         let file_header_size = r.read_u16::<LittleEndian>()?;
-        if file_header_size != Self::SIZE {
-            return Err(Error::Parse(format!(
-                "Invalid file header size: {}",
-                file_header_size
-            )));
-        }
+        ensure!(file_header_size == Self::SIZE, "Invalid file header size: {file_header_size}");
+
         let chunk_header_size = r.read_u16::<LittleEndian>()?;
-        if chunk_header_size != ChunkHeader::SIZE {
-            return Err(Error::Parse(format!(
-                "Invalid chunk header size: {}",
-                chunk_header_size
-            )));
-        }
+        ensure!(chunk_header_size == ChunkHeader::SIZE, "Invalid chunk header size: {chunk_header_size}");
+
         let block_size = r.read_u32::<LittleEndian>()?;
-        if block_size != Block::SIZE {
-            return Err(Error::Parse(format!("Invalid block size: {}", block_size)));
-        }
+        ensure!(block_size == Block::SIZE, "Invalid block size: {block_size}");
 
         Ok(Self {
             total_blocks: r.read_u32::<LittleEndian>()?,
@@ -101,7 +81,7 @@ impl ChunkType {
             CHUNK_MAGIC_FILL => Ok(ChunkType::Fill),
             CHUNK_MAGIC_DONT_CARE => Ok(ChunkType::DontCare),
             CHUNK_MAGIC_CRC32 => Ok(ChunkType::Crc32),
-            _ => Err(Error::Parse(format!("Invalid chunk magic: {}", magic))),
+            _ => bail!("Invalid chunk magic: {magic:x}"),
         }
     }
 }
