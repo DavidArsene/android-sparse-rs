@@ -20,6 +20,10 @@ byteorder = "1"
 version = "1"
 features = ["nightly"]
 
+[dependencies.indicatif]
+version = "0.17"
+default-features = false
+
 [dependencies.clap]
 version = "4"
 default-features = false

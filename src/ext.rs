@@ -3,7 +3,7 @@
 use crate::block::Block;
 use crc32fast::Hasher;
 
-// Enables writing sparse blocks to `crc32fast::Hasher`s.
+/// Enables writing sparse blocks to `crc32fast::Hasher`s.
 pub(crate) trait WriteBlock {
     fn write_block(&mut self, block: &Block);
 }

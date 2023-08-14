@@ -1,6 +1,7 @@
 extern crate android_sparse as sparse;
 
 use clap::Parser;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 
 /// Decode one or more sparse images to a raw image
@@ -32,9 +33,16 @@ fn main() -> anyhow::Result<()> {
     for fi in fis {
         let reader = sparse::Reader::new(fi, args.crc)?;
 
+        let bar = ProgressBar::new(reader.size as u64);
+        let template = "{elapsed} {bar:80} {bytes} / {total_bytes}";
+        bar.set_style(ProgressStyle::with_template(template)?.progress_chars("█▉▊▋▌▍▎▏  "));
+
         for block in reader {
             decoder.write_block(&block?)?;
+            bar.inc(sparse::block::Block::SIZE as u64);
         }
+
+        bar.finish();
     }
 
     decoder.close()

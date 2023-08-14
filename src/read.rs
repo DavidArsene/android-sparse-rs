@@ -27,6 +27,8 @@ pub struct Reader<R: Read> {
     remaining_chunks: u32,
     crc: Option<Hasher>,
     finished: bool,
+    /// The size of the raw file in bytes.
+    pub size: u32,
 }
 
 impl<R: Read> Reader<R> {
@@ -41,6 +43,7 @@ impl<R: Read> Reader<R> {
             remaining_chunks: header.total_chunks,
             crc: if crc { Some(Hasher::new()) } else { None },
             finished: false,
+            size: header.total_blocks * BLOCK_SIZE as u32,
         })
     }
 
