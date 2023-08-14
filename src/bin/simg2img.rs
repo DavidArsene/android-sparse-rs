@@ -2,7 +2,7 @@ extern crate android_sparse as sparse;
 
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::fs::{File, OpenOptions};
+use std::{fs::{File, OpenOptions}, io::Read};
 
 /// Decode one or more sparse images to a raw image
 #[derive(Parser)]
@@ -21,19 +21,30 @@ struct Args {
     sparse_images: Vec<String>,
 
     /// Output raw image
-    #[clap()]
-    raw_image: String,
+    #[clap(last = true)]
+    raw_image: Option<String>,
 }
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let fis = args.sparse_images.iter()
-        .map(File::open).collect::<Result<Vec<_>, _>>()?;
+    // If no output image is specified, use the input image
+    // as the output and read from stdin.
+    let fis: Vec<Box<dyn Read>> = if args.raw_image.is_some() {
+        let mut fis: Vec<Box<dyn Read>> = Vec::new();
+        for sparse_image in &args.sparse_images {
+            fis.push(Box::new(File::open(sparse_image)?));
+        }
+        fis
+    } else {
+        vec![Box::new(std::io::stdin())]
+    };
+
+    let dst_stdin = args.sparse_images.first().unwrap().into();
+    let dst = args.raw_image.unwrap_or(dst_stdin);
 
     let fo = OpenOptions::new().write(true).create(true)
-        .create_new(!args.force)
-        .open(args.raw_image)?;
+        .create_new(!args.force).open(dst)?;
 
     let mut decoder = sparse::Decoder::new(fo)?;
 
