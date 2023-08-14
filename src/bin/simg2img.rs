@@ -2,7 +2,7 @@ extern crate android_sparse as sparse;
 
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 
 /// Decode one or more sparse images to a raw image
 #[derive(Parser)]
@@ -11,6 +11,10 @@ struct Args {
     /// Verify checksums
     #[clap(short, long)]
     crc: bool,
+
+    /// Overwrite output image
+    #[clap(short, long)]
+    force: bool,
 
     /// Input sparse images
     #[arg(required = true)]
@@ -27,8 +31,11 @@ fn main() -> anyhow::Result<()> {
     let fis = args.sparse_images.iter()
         .map(File::open).collect::<Result<Vec<_>, _>>()?;
 
-    let output = File::create(args.raw_image)?;
-    let mut decoder = sparse::Decoder::new(output)?;
+    let fo = OpenOptions::new().write(true).create(true)
+        .create_new(!args.force)
+        .open(args.raw_image)?;
+
+    let mut decoder = sparse::Decoder::new(fo)?;
 
     for fi in fis {
         let reader = sparse::Reader::new(fi, args.crc)?;

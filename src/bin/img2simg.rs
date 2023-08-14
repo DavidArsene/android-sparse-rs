@@ -2,7 +2,7 @@ extern crate android_sparse as sparse;
 
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 
 /// Encode a raw image to a sparse image
 #[derive(Parser)]
@@ -11,6 +11,10 @@ struct Args {
     /// Add checksum to output image
     #[clap(short, long)]
     crc: bool,
+
+    /// Overwrite output image
+    #[clap(short, long)]
+    force: bool,
 
     /// Input raw image
     #[arg()]
@@ -26,9 +30,12 @@ fn main() -> anyhow::Result<()> {
     
     let fi = File::open(args.raw_image)?;
     let size = fi.metadata()?.len();
-    let fo = File::create(args.sparse_image)?;
 
     let encoder = sparse::Encoder::new(fi)?;
+
+    let fo = OpenOptions::new().write(true).create(true)
+        .create_new(!args.force)
+        .open(args.sparse_image)?;
 
     let mut writer = sparse::Writer::new(fo, args.crc)?;
 
