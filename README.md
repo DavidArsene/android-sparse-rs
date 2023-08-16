@@ -1,5 +1,7 @@
 # android-sparse
 
+### Based on https://gitlab.com/teskje/android-sparse-rs
+
 An implementation of Android's sparse file format in Rust.
 
 Sparse is a simple file compression format. It is supported by Android's
@@ -31,18 +33,6 @@ process across all major operating systems.
 To build android-sparse, you need a working installation of Rust. Check out
 https://www.rustup.rs for instructions.
 
-The latest stable version of android-sparse is available on
-[crates.io](https://crates.io/crates/android-sparse). You can install it with
-`cargo`:
-
-    $ cargo install android-sparse
-
-This installs the android-sparse tools in `cargo`'s bin directory. If you
-installed Rust via `rustup`, this directory is located at:
-
-* `$HOME/.cargo/bin` on Unix
-* `%USERPROFILE%\.cargo\bin` on Windows
-
 ## Usage
 
 ### Encoding
@@ -61,15 +51,16 @@ Decoding a sparse image to a raw image:
 
     $ simg2img <sparse_image> <raw_image>
 
-It's also possible to decode multiple sparse images to a single raw image
-by specifying them separated by commas:
-
-    $ simg2img <sparse_image>,<sparse_image>,... <raw_image>
-
 The `-c`/`--crc` flag makes `simg2img` check the checksums included in the
 sparse image. Decoding is aborted if they don't match.
 
     $ simg2img --crc <sparse_image> <raw_image>
+
+The `-p`/`--passthru` flag allows copying the input image to the output
+if the input is not a sparse image. Useful when piping multiple types
+of inputs to `simg2img`:
+
+    $ simg2img --passthru <raw_image> <raw_image>
 
 ## License
 
