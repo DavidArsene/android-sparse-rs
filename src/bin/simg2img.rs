@@ -1,7 +1,7 @@
 extern crate android_sparse as sparse;
 
 use indicatif::{ProgressBar, ProgressStyle};
-use std::{fs::{File, OpenOptions}, io::Read};
+use std::{fs::{File, OpenOptions}, io};
 
 /// Decode a sparse image to a raw image
 #[derive(argh::FromArgs)]
@@ -13,6 +13,10 @@ struct Args {
     /// overwrite output image
     #[argh(switch, short = 'f')]
     force: bool,
+
+    /// copy input image to output without decoding
+    #[argh(switch, short = 'p')]
+    passthru: bool,
 
     /// input sparse image
     #[argh(positional)]
@@ -30,7 +34,7 @@ fn main() -> anyhow::Result<()> {
 
     // If no output image is specified, use the input image
     // as the output and read from stdin.
-    let fi: &mut dyn Read = if args.raw_image.is_some() {
+    let mut fi: &mut dyn io::Read = if args.raw_image.is_some() {
 
         file_read = File::open(args.sparse_image)?;
         dst = args.raw_image.unwrap();
@@ -41,10 +45,21 @@ fn main() -> anyhow::Result<()> {
         dst = args.sparse_image;
         &mut stdin_read
     };
-    let reader = sparse::Reader::new(fi, args.crc)?;
 
-    let fo = OpenOptions::new().write(true).create(true)
+    let mut fo = OpenOptions::new().write(true).create(true)
         .create_new(!args.force).open(dst)?;
+
+    let reader = match sparse::Reader::new(&mut fi, args.crc) {
+        Ok(reader) => reader,
+        Err(err) => {
+            anyhow::ensure!(args.passthru, "{err} (use --passthru to write image as-is)");
+
+            // No progress bar here, we don't know the file size for stdin
+            io::copy(fi, &mut fo)?;
+
+            return Ok(());
+        }
+    };
 
     let mut decoder = sparse::Decoder::new(fo)?;
 
