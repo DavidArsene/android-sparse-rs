@@ -63,7 +63,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut decoder = sparse::Decoder::new(fo)?;
 
-    let bar = ProgressBar::new(reader.size as u64);
+    let bar = ProgressBar::new(reader.size);
     let template = "{elapsed} {bar:80} {bytes} / {total_bytes}";
     bar.set_style(ProgressStyle::with_template(template)?.progress_chars("█▉▊▋▌▍▎▏  "));
 

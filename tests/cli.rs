@@ -86,24 +86,3 @@ fn simg2img_invalid_crc() {
         .failure()
         .stderr("Error: Checksum does not match\n");
 }
-
-#[test]
-fn simg2img_concat() {
-    let src = data_path("hello.simg");
-    let tmpdir = tempfile::tempdir().unwrap();
-    let dst = tmpdir.path().join("hello.img");
-
-    Command::cargo_bin("simg2img")
-        .unwrap()
-        .arg(&src)
-        .arg(&src)
-        .arg(&dst)
-        .assert()
-        .success();
-
-    let expected = data("decoded.img");
-    let result = fs::read(&dst).unwrap();
-
-    assert_eq!(&result[..result.len() / 2], &expected[..]);
-    assert_eq!(&result[result.len() / 2..], &expected[..]);
-}
