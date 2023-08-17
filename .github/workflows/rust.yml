@@ -1,0 +1,73 @@
+name: Build
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-gnu
+            label: linux-aarch64
+            os: ubuntu-latest
+          - target: x86_64-unknown-linux-gnu
+            label: linux-x86_64
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
+            label: windows-x86_64
+            os: windows-latest
+          - target: aarch64-linux-android
+            label: android-aarch64
+            os: ubuntu-latest
+
+    name: build (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    steps:
+        - uses: actions/checkout@v3
+
+        - name: Install Rust components
+          run: |
+            rustup component add rust-src
+            rustup target add ${{ matrix.target }}
+
+        - name: Configure linux-aarch64 environment
+          if: matrix.target == 'aarch64-unknown-linux-gnu'
+          run: |
+            sudo apt install -y gcc-aarch64-linux-gnu
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+        - name: Configure android-aarch64 environment
+          if: matrix.target == 'aarch64-linux-android'
+          run: |
+            NDK_CLANG=$(ls $ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android*-clang | tail -n -1)
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$NDK_CLANG" >> $GITHUB_ENV
+
+            # https://github.com/rust-lang/cc-rs/issues/731
+            sed -i 's/has_unwind = .*;/has_unwind = true;/' ~/.rustup/toolchains/*/lib/rustlib/src/rust/library/unwind/build.rs
+
+        - name: Build
+          shell: bash
+          run: |
+            cargo build --target ${{ matrix.target }} --release \
+              -Z build-std=std,panic_abort \
+              -Z build-std-features=panic_immediate_abort \
+              -Z unstable-options --out-dir build
+          env:
+            RUSTC_BOOTSTRAP: 1
+
+        - name: Attach binary to release
+          shell: bash
+          run: |
+            7z a sparse-utils-${{ matrix.label }}.zip ./build/*img2*
+            hub release edit -m "" -a sparse-* "$GITHUB_REF_NAME"
+          env:
+            GITHUB_TOKEN: ${{ github.token }}
