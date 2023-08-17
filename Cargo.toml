@@ -1,6 +1,6 @@
 [package]
 name = "android-sparse"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Jan Teske <jteske@posteo.net>", "David Arsene"]
 description = "An implementation of Android's sparse file format."
 license = "MIT"
